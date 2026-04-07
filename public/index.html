@@ -601,16 +601,7 @@
                 this.resultsContainer.classList.remove('hidden'); lucide.createIcons();
 
                 let results = [];
-                try {
-                    const res = await fetch(`/api/search-youtube?q=${encodeURIComponent(query)}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        results = Array.isArray(data?.items) ? data.items : [];
-                    }
-                } catch (_e) {}
-
                 for (const provider of this.providers) {
-                    if (results.length > 0) break;
                     try {
                         results = provider.type === 'piped'
                             ? await this.fetchPiped(provider.base, query)
