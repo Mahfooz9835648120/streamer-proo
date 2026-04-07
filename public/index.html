@@ -66,12 +66,24 @@
     
     <!-- HLS.js -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <!-- DASH.js -->
+    <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
     
     <!-- YouTube IFrame API -->
     <script src="https://www.youtube.com/iframe_api"></script>
     
     <!-- Socket.io -->
     <script src="/socket.io/socket.io.js"></script>
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
+        import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
+        window.firebaseReady = false;
+        if (window.__FIREBASE_CONFIG__) {
+            const app = initializeApp(window.__FIREBASE_CONFIG__);
+            window.firestoreDb = getFirestore(app);
+            window.firebaseReady = true;
+        }
+    </script>
 
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #000; color: #fff; overflow: hidden; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
@@ -119,6 +131,28 @@
 </head>
 <body class="antialiased selection:bg-white/20">
 
+    <div id="auth-overlay" class="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-6">
+        <div class="w-full max-w-sm glass-panel rounded-2xl border border-white/10 p-6 space-y-4">
+            <h2 class="text-lg font-bold tracking-widest text-center">WELCOME</h2>
+            <p class="text-xs text-gray-400 text-center">Login or create your Custom ID to continue.</p>
+            <div class="flex justify-center">
+                <img id="overlay-avatar-preview" src="" class="w-16 h-16 rounded-full border border-white/20 bg-white/5" alt="Avatar">
+            </div>
+            <input type="text" id="overlay-name" placeholder="Your Name" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30">
+            <input type="text" id="overlay-login-id" placeholder="Custom ID" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30 lowercase">
+            <input type="password" id="overlay-password" placeholder="Password" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30">
+            <div class="grid grid-cols-2 gap-2">
+                <button id="gender-male" onclick="logic.selectGender('male')" class="border border-white/20 rounded-xl py-2 text-sm">Male</button>
+                <button id="gender-female" onclick="logic.selectGender('female')" class="border border-white/20 rounded-xl py-2 text-sm">Female</button>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="logic.overlayRegister()" class="bg-white text-black font-semibold py-3 rounded-xl hover:bg-gray-200 transition-colors">Create ID</button>
+                <button onclick="logic.overlayLogin()" class="border border-white/20 text-white font-semibold py-3 rounded-xl hover:bg-white/5 transition-colors">Login</button>
+            </div>
+            <button onclick="logic.continueGuest()" class="w-full text-xs text-gray-400 underline">Continue as Guest (offline mode)</button>
+        </div>
+    </div>
+
     <canvas id="bg-canvas" class="fixed inset-0 z-0 pointer-events-none opacity-80"></canvas>
     <div id="toast-container" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
@@ -134,6 +168,10 @@
             <div class="flex items-center gap-4 text-gray-400">
                 <button class="hover:text-white transition-colors" onclick="ui.togglePanel('admin-panel')"><i data-lucide="settings" class="w-5 h-5"></i></button>
                 <button class="hover:text-white transition-colors" onclick="engine.togglePiP()" title="Picture in Picture"><i data-lucide="cast" class="w-5 h-5"></i></button>
+                <button class="hover:text-white transition-colors relative" onclick="ui.togglePanel('account-panel')" title="Account">
+                    <i data-lucide="user-circle-2" class="w-5 h-5"></i>
+                    <span id="auth-badge" class="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full hidden"></span>
+                </button>
                 <button class="hover:text-white transition-colors relative" onclick="ui.togglePanel('watch-together-panel')" title="Watch Together">
                     <i data-lucide="users" class="w-5 h-5"></i>
                     <span id="teleparty-badge" class="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full hidden"></span>
@@ -348,8 +386,64 @@
                         <label class="text-[10px] font-bold tracking-widest text-gray-500">THUMBNAIL URL (OPTIONAL)</label>
                         <input type="url" id="admin-thumb" placeholder="https://..." class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30">
                     </div>
+                    <div class="space-y-2 border border-white/10 rounded-xl p-3 bg-white/5">
+                        <label class="text-[10px] font-bold tracking-widest text-gray-400">MPD ADVANCED OPTIONS (OPTIONAL)</label>
+                        <input type="url" id="admin-mpd-cookie-url" placeholder="Cookie URL (hit before MPD)" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none">
+                        <input type="text" id="admin-mpd-headers" placeholder='Headers JSON {"Authorization":"Bearer ..."}' class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none">
+                        <label class="flex items-center gap-2 text-xs text-gray-300">
+                            <input type="checkbox" id="admin-mpd-credentials" class="accent-white">
+                            Use credentials/cookies for MPD requests
+                        </label>
+                    </div>
                     <button type="submit" class="w-full bg-white text-black font-semibold py-3 rounded-xl hover:bg-gray-200 transition-colors shadow-lg">Add to Library</button>
                 </form>
+            </div>
+        </aside>
+
+        <aside id="account-panel" class="fixed top-0 right-0 h-full w-full max-w-sm glass-panel z-50 transform translate-x-full transition-transform duration-400 flex flex-col">
+            <div class="p-6 border-b border-border flex items-center justify-between">
+                <h2 class="text-sm font-bold tracking-widest">ACCOUNT</h2>
+                <button onclick="ui.closeAllPanels()" class="p-2 hover:bg-white/10 rounded-full"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="p-6 flex-1 overflow-y-auto space-y-6">
+                <div class="glass rounded-xl p-4 text-xs text-gray-300">
+                    <p>Logged in as: <span id="auth-name" class="font-bold text-white">Guest</span></p>
+                    <p class="mt-1">Login ID: <span id="auth-login-id" class="font-mono text-blue-300">not-set</span></p>
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] font-bold tracking-widest text-gray-500">DISPLAY NAME</label>
+                    <input type="text" id="auth-name-input" placeholder="Your Name" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30">
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] font-bold tracking-widest text-gray-500">LOGIN ID (3-20: a-z, 0-9, _, -)</label>
+                    <input type="text" id="auth-login-input" placeholder="your_id" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30 lowercase">
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] font-bold tracking-widest text-gray-500">PIN (4-8 digits)</label>
+                    <input type="password" id="auth-pin-input" placeholder="1234" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30">
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="logic.registerAccount()" class="flex-1 bg-white text-black font-semibold py-3 rounded-xl hover:bg-gray-200 transition-colors">Create ID</button>
+                    <button onclick="logic.loginAccount()" class="flex-1 border border-white/20 text-white font-semibold py-3 rounded-xl hover:bg-white/5 transition-colors">Login</button>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="logic.exportLibrary()" class="border border-white/20 text-white font-semibold py-2 rounded-xl hover:bg-white/5 transition-colors text-xs">Export Data</button>
+                    <label class="border border-white/20 text-white font-semibold py-2 rounded-xl hover:bg-white/5 transition-colors text-xs text-center cursor-pointer">
+                        Import Data
+                        <input type="file" id="auth-import-input" class="hidden" accept="application/json" onchange="logic.importLibrary(event)">
+                    </label>
+                </div>
+                <button onclick="logic.addCurrentToFavorites()" class="w-full border border-yellow-500/30 text-yellow-300 font-semibold py-2 rounded-xl hover:bg-yellow-500/10 transition-colors text-xs">Add Current Media to Favorites</button>
+                <div class="text-[10px] text-gray-500">Last synced: <span id="auth-last-sync">Never</span></div>
+                <div class="space-y-2">
+                    <h3 class="text-[10px] font-bold tracking-widest text-gray-400">FAVORITES</h3>
+                    <div id="auth-favorites" class="max-h-24 overflow-y-auto space-y-1 text-xs text-gray-300"></div>
+                </div>
+                <div class="space-y-2">
+                    <h3 class="text-[10px] font-bold tracking-widest text-gray-400">HISTORY</h3>
+                    <div id="auth-history" class="max-h-28 overflow-y-auto space-y-1 text-xs text-gray-400"></div>
+                </div>
+                <button onclick="logic.logoutAccount()" class="w-full bg-red-500/10 text-red-400 border border-red-500/20 font-semibold py-3 rounded-xl hover:bg-red-500/20 transition-colors text-sm">Logout</button>
             </div>
         </aside>
 
@@ -439,13 +533,34 @@
         };
         ytHelper.init();
 
+        const mediaHelper = {
+            extractGoogleDriveId(url = '') {
+                const match = String(url).match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+                return match ? match[1] : null;
+            },
+            normalizeUrl(url = '') {
+                const driveId = this.extractGoogleDriveId(url);
+                if (driveId) return `https://drive.google.com/uc?export=download&id=${driveId}`;
+                return url;
+            },
+            detectType(url = '', fallback = 'mp4') {
+                const clean = this.normalizeUrl(url).split('?')[0].toLowerCase();
+                if (clean.endsWith('.m3u8')) return 'hls';
+                if (clean.endsWith('.mpd')) return 'dash';
+                if (clean.endsWith('.webm')) return 'webm';
+                if (clean.endsWith('.mp4')) return 'mp4';
+                return fallback;
+            }
+        };
+
         // ==========================================
         // STATE & DATA
         // ==========================================
         const state = {
             activeView: 'view-video',
-            video: { isPlaying: false, isMuted: false, quality: 'auto', hls: null, type: 'native', currentYtId: null, currentUrl: null },
+            video: { isPlaying: false, isMuted: false, quality: 'auto', hls: null, dash: null, type: 'native', currentYtId: null, currentUrl: null },
             music: { isPlaying: false, currentTrackIndex: 0, audioContext: null, analyser: null, dataArray: null, type: 'native' },
+            auth: { loggedIn: false, loginId: null, name: 'Guest', gender: 'male', avatar: '', updatedAt: null, favorites: [], history: [] },
             teleparty: { inRoom: false, roomId: null, role: null, userName: 'Guest' },
             ui: { controlsVisible: true, controlsTimeout: null }
         };
@@ -486,14 +601,14 @@
             },
             closeAllPanels() {
                 const backdrop = document.getElementById('panel-backdrop'); backdrop.classList.add('opacity-0'); setTimeout(() => backdrop.classList.add('hidden'), 300);
-                document.getElementById('admin-panel').classList.add('translate-x-full'); document.getElementById('watch-together-panel').classList.add('translate-x-full');
+                document.getElementById('admin-panel').classList.add('translate-x-full'); document.getElementById('watch-together-panel').classList.add('translate-x-full'); document.getElementById('account-panel').classList.add('translate-x-full');
             },
             toggleQualityMenu() {
                 document.getElementById('quality-menu').classList.toggle('hidden');
             },
             renderLibrary() {
-                document.getElementById('video-library-grid').innerHTML = mockLibrary.map(vid => `
-                    <div class="group relative rounded-xl overflow-hidden glass cursor-pointer hover:border-white/30 transition-colors" onclick="engine.loadVideo('${vid.url}', '${vid.type}', '${vid.ytId}')">
+                document.getElementById('video-library-grid').innerHTML = mockLibrary.map((vid, idx) => `
+                    <div class="group relative rounded-xl overflow-hidden glass cursor-pointer hover:border-white/30 transition-colors" onclick="logic.playLibraryItem(${idx})">
                         <div class="aspect-video relative">
                             <img src="${vid.thumb}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="Thumb">
                             <div class="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors"></div>
@@ -528,6 +643,12 @@
         // ==========================================
         const searchEngine = {
             input: document.getElementById('search-input'), resultsContainer: document.getElementById('search-results'), timeout: null,
+            providers: [
+                { type: 'piped', base: 'https://pipedapi.kavin.rocks' },
+                { type: 'piped', base: 'https://api.piped.projectsegfau.lt' },
+                { type: 'invidious', base: 'https://inv.nadeko.net' },
+                { type: 'invidious', base: 'https://invidious.fdn.fr' }
+            ],
             init() {
                 this.input.addEventListener('input', (e) => {
                     clearTimeout(this.timeout); const q = e.target.value.trim();
@@ -536,6 +657,35 @@
                 });
                 document.addEventListener('click', (e) => { if (!document.getElementById('search-container').contains(e.target)) this.resultsContainer.classList.add('hidden'); });
             },
+            esc(str = '') {
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            },
+            normalizeResult(item) {
+                const ytId = ytHelper.extractId(item.url || '') || item.id || item.videoId || item.videoIdOrNull;
+                if (!ytId) return null;
+                const title = item.title || item.name || 'YouTube video';
+                const uploader = item.uploaderName || item.author || item.uploader || 'YouTube';
+                const thumb = item.thumbnail || item.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
+                const duration = Number.isFinite(item.duration) ? item.duration : (Number.isFinite(item.lengthSeconds) ? item.lengthSeconds : -1);
+                return { ytId, title, uploader, thumb, duration };
+            },
+            async fetchPiped(base, query) {
+                const res = await fetch(`${base}/search?q=${encodeURIComponent(query)}&filter=videos`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return (data?.items || []).map(item => this.normalizeResult(item)).filter(Boolean);
+            },
+            async fetchInvidious(base, query) {
+                const res = await fetch(`${base}/api/v1/search?q=${encodeURIComponent(query)}&type=video`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return (Array.isArray(data) ? data : []).map(item => this.normalizeResult(item)).filter(Boolean);
+            },
             async performSearch(query) {
                 const directYtId = ytHelper.extractId(query);
                 if(directYtId) { this.playResult(directYtId, 'Pasted YouTube Stream', `https://img.youtube.com/vi/${directYtId}/mqdefault.jpg`); return; }
@@ -543,27 +693,38 @@
                 this.resultsContainer.innerHTML = `<div class="p-4 text-center text-xs text-gray-400"><i data-lucide="loader-2" class="w-5 h-5 animate-spin mx-auto mb-2"></i> Searching YouTube...</div>`;
                 this.resultsContainer.classList.remove('hidden'); lucide.createIcons();
 
-                const pipedInstances = ['https://pipedapi.kavin.rocks', 'https://api.piped.projectsegfau.lt'];
-                let data = null;
-                for (const instance of pipedInstances) {
+                let results = [];
+                try {
+                    const res = await fetch(`/api/search-youtube?q=${encodeURIComponent(query)}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        results = Array.isArray(data?.items) ? data.items : [];
+                    }
+                } catch (_e) {}
+
+                for (const provider of this.providers) {
+                    if (results.length > 0) break;
                     try {
-                        const res = await fetch(`${instance}/search?q=${encodeURIComponent(query)}&filter=videos`);
-                        if (res.ok) { data = await res.json(); break; }
+                        results = provider.type === 'piped'
+                            ? await this.fetchPiped(provider.base, query)
+                            : await this.fetchInvidious(provider.base, query);
+                        if (results.length > 0) break;
                     } catch(e) { continue; }
                 }
 
-                if (!data || !data.items || data.items.length === 0) {
+                if (results.length === 0) {
                     this.resultsContainer.innerHTML = `<div class="p-4 text-center text-xs text-gray-400">No results found</div>`; return;
                 }
 
-                const html = data.items.slice(0, 6).map(item => {
-                    const ytId = item.url.split('?v=')[1]; const thumb = item.thumbnail || `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
+                const html = results.slice(0, 6).map(item => {
+                    const encodedTitle = encodeURIComponent(item.title || 'YouTube video');
+                    const encodedThumb = encodeURIComponent(item.thumb || `https://img.youtube.com/vi/${item.ytId}/mqdefault.jpg`);
                     return `
-                        <div class="flex items-center gap-3 p-3 hover:bg-white/10 cursor-pointer transition border-b border-white/5" onclick="searchEngine.playResult('${ytId}', '${item.title.replace(/'/g, "\\'")}', '${thumb}')">
-                            <div class="w-16 h-9 rounded bg-surfaceLight flex-shrink-0 overflow-hidden"><img src="${thumb}" class="w-full h-full object-cover"></div>
+                        <div class="flex items-center gap-3 p-3 hover:bg-white/10 cursor-pointer transition border-b border-white/5" onclick="searchEngine.playResultFromEncoded('${item.ytId}', '${encodedTitle}', '${encodedThumb}')">
+                            <div class="w-16 h-9 rounded bg-surfaceLight flex-shrink-0 overflow-hidden"><img src="${item.thumb}" class="w-full h-full object-cover"></div>
                             <div class="flex-1 min-w-0">
-                                <p class="text-sm font-semibold text-white truncate">${item.title}</p>
-                                <p class="text-[10px] text-gray-400 truncate">${item.uploaderName} • ${item.duration > 0 ? ui.formatTime(item.duration) : 'Live'}</p>
+                                <p class="text-sm font-semibold text-white truncate">${this.esc(item.title)}</p>
+                                <p class="text-[10px] text-gray-400 truncate">${this.esc(item.uploader)} • ${item.duration > 0 ? ui.formatTime(item.duration) : 'Live'}</p>
                             </div>
                             <i data-lucide="play-circle" class="w-4 h-4 text-gray-400 flex-shrink-0"></i>
                         </div>`;
@@ -571,16 +732,19 @@
                 
                 this.resultsContainer.innerHTML = html; lucide.createIcons();
             },
+            playResultFromEncoded(ytId, encodedTitle, encodedThumb) {
+                this.playResult(ytId, decodeURIComponent(encodedTitle), decodeURIComponent(encodedThumb));
+            },
             playResult(ytId, title, thumb) {
                 this.resultsContainer.classList.add('hidden'); this.input.value = '';
                 const url = `https://www.youtube.com/watch?v=${ytId}`;
                 
                 if (state.activeView === 'view-video') {
                     mockLibrary.unshift({ id: 'yt-' + Date.now(), type: 'youtube', title: title, url: url, ytId: ytId, thumb: thumb, duration: 'YouTube', isCustom: true });
-                    ui.renderLibrary(); engine.loadVideo(url, 'youtube', ytId);
+                    ui.renderLibrary(); logic.saveUserMedia(); engine.loadVideo(url, 'youtube', ytId);
                 } else {
                     mockPlaylist.unshift({ title: title, artist: 'YouTube Audio', url: url, ytId: ytId, thumb: thumb, duration: 'YouTube', isCustom: true, type: 'youtube' });
-                    ui.renderPlaylist(); musicEngine.loadTrack(0);
+                    ui.renderPlaylist(); logic.saveUserMedia(); musicEngine.loadTrack(0);
                 }
             }
         };
@@ -823,8 +987,13 @@
             showControls() { document.getElementById('video-overlay').style.opacity = '1'; state.ui.controlsVisible = true; this.resetHideTimer(); },
             hideControls() { if(state.video.isPlaying) { document.getElementById('video-overlay').style.opacity = '0'; state.ui.controlsVisible = false; } },
             resetHideTimer() { clearTimeout(state.ui.controlsTimeout); if(state.video.isPlaying) state.ui.controlsTimeout = setTimeout(() => this.hideControls(), 3000); },
+            playSmart(url, isSync = false, options = null) {
+                const normalizedUrl = mediaHelper.normalizeUrl(url);
+                const detectedType = mediaHelper.detectType(normalizedUrl, 'native');
+                this.loadVideo(normalizedUrl, detectedType, null, isSync, options);
+            },
             
-            loadVideo(url, type, ytId, isSync = false) {
+            loadVideo(url, type, ytId, isSync = false, options = null) {
                 if (!isSync && this.isRestricted()) {
                     ui.showToast('Viewers cannot change the video.', 'error');
                     return;
@@ -833,11 +1002,15 @@
                 ytHelper.hideEmbedError();
                 document.getElementById('video-loader').classList.remove('hidden'); document.getElementById('video-status-text').textContent = "Buffering...";
                 
-                state.video.type = type; state.video.currentYtId = ytId; state.video.currentUrl = url;
+                const normalizedUrl = mediaHelper.normalizeUrl(url);
+                state.video.type = type; state.video.currentYtId = ytId; state.video.currentUrl = normalizedUrl;
+                logic.trackHistory(`Video: ${type}`, normalizedUrl, 'video');
 
-                if (!isSync) { logic.emitSync('load', { video: { url, type, ytId } }); }
+                if (!isSync) { logic.emitSync('load', { video: { url: normalizedUrl, type, ytId, options } }); }
 
                 if (state.video.hls) state.video.hls.destroy();
+                if (state.video.dash) state.video.dash.reset();
+                state.video.hls = null; state.video.dash = null;
 
                 if (type === 'youtube') {
                     this.v.pause(); this.v.classList.add('opacity-0'); this.ytContainer.classList.remove('hidden');
@@ -869,8 +1042,36 @@
                     this.ytContainer.classList.add('hidden'); if(this.ytPlayer && this.ytPlayer.pauseVideo) this.ytPlayer.pauseVideo();
                     this.v.classList.remove('opacity-0');
                     if (type === 'hls' && Hls.isSupported()) {
-                        const hls = new Hls({ maxBufferLength: 30 }); hls.loadSource(url); hls.attachMedia(this.v); state.video.hls = hls;
-                    } else { this.v.src = url; }
+                        const hls = new Hls({ maxBufferLength: 30 }); hls.loadSource(normalizedUrl); hls.attachMedia(this.v); state.video.hls = hls;
+                    } else if (type === 'dash') {
+                        if (window.dashjs && window.dashjs.MediaPlayer) {
+                            const dashPlayer = window.dashjs.MediaPlayer().create();
+                            if (options?.withCredentials) dashPlayer.setXHRWithCredentialsForType('MPD', true), dashPlayer.setXHRWithCredentialsForType('MediaSegment', true), dashPlayer.setXHRWithCredentialsForType('InitializationSegment', true);
+                            if (options?.headers && typeof options.headers === 'object') {
+                                dashPlayer.extend('RequestModifier', () => ({
+                                    modifyRequestHeader: (xhr) => {
+                                        Object.entries(options.headers).forEach(([k, v]) => xhr.setRequestHeader(k, String(v)));
+                                        return xhr;
+                                    },
+                                    modifyRequestURL: (url) => url
+                                }), true);
+                            }
+                            if (options?.cookieUrl) {
+                                fetch(options.cookieUrl, { credentials: 'include' }).catch(() => null);
+                            }
+                            dashPlayer.initialize(this.v, normalizedUrl, true);
+                            state.video.dash = dashPlayer;
+                        } else {
+                            this.v.src = normalizedUrl;
+                        }
+                    } else if (['mp4', 'webm', 'native'].includes(type)) {
+                        this.v.src = normalizedUrl;
+                    } else {
+                        ui.showToast('Unsupported video format', 'error');
+                        document.getElementById('video-loader').classList.add('hidden');
+                        document.getElementById('video-status-text').textContent = "Unavailable";
+                        return;
+                    }
                     this.v.currentTime = 0; 
                     
                     const playPromise = this.v.play();
@@ -971,6 +1172,7 @@
                 state.music.currentTrackIndex = idx;
                 const track = mockPlaylist[idx];
                 state.music.type = track.type;
+                logic.trackHistory(`Music: ${track.title}`, track.url, 'music');
                 
                 document.getElementById('music-title').textContent = track.title; document.getElementById('music-artist').textContent = track.artist;
                 const thumbEl = document.getElementById('music-thumbnail'); const iconEl = document.getElementById('music-default-icon');
@@ -1083,6 +1285,244 @@
         // ==========================================
         const logic = {
             sleepTimer: null,
+            selectedGender: 'male',
+            avatarFromGender(gender, seed) {
+                const style = gender === 'female' ? 'avataaars' : 'adventurer';
+                return `https://api.dicebear.com/9.x/${style}/svg?seed=${encodeURIComponent(seed || 'StreamerPro')}`;
+            },
+            updateOverlayAvatar() {
+                const seed = document.getElementById('overlay-name')?.value || document.getElementById('overlay-login-id')?.value || 'StreamerPro';
+                const avatar = this.avatarFromGender(this.selectedGender, seed);
+                document.getElementById('overlay-avatar-preview').src = avatar;
+                document.getElementById('gender-male').classList.toggle('bg-white/10', this.selectedGender === 'male');
+                document.getElementById('gender-female').classList.toggle('bg-white/10', this.selectedGender === 'female');
+                return avatar;
+            },
+            selectGender(gender) {
+                this.selectedGender = gender;
+                this.updateOverlayAvatar();
+            },
+            hideAuthOverlay() { document.getElementById('auth-overlay').classList.add('hidden'); },
+            showAuthOverlay() { document.getElementById('auth-overlay').classList.remove('hidden'); },
+            continueGuest() {
+                state.auth = { loggedIn: false, loginId: null, name: 'Guest', gender: 'male', avatar: '', updatedAt: null, favorites: [], history: [] };
+                state.teleparty.userName = 'Guest';
+                this.hideAuthOverlay();
+                ui.showToast('Guest mode enabled', 'success');
+            },
+            readLocalAccounts() { return JSON.parse(localStorage.getItem('sp_local_accounts') || '{}'); },
+            writeLocalAccounts(data) { localStorage.setItem('sp_local_accounts', JSON.stringify(data)); },
+            copyOverlayToPanel() {
+                const name = document.getElementById('overlay-name').value.trim();
+                const id = document.getElementById('overlay-login-id').value.trim().toLowerCase();
+                const password = document.getElementById('overlay-password').value.trim();
+                document.getElementById('auth-name-input').value = name;
+                document.getElementById('auth-login-input').value = id;
+                document.getElementById('auth-pin-input').value = password;
+            },
+            async overlayRegister() { this.copyOverlayToPanel(); await this.registerAccount(true); },
+            async overlayLogin() { this.copyOverlayToPanel(); await this.loginAccount(true); },
+            async api(path, method = 'GET', body = null) {
+                const res = await fetch(path, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: body ? JSON.stringify(body) : null
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || 'Request failed');
+                return data;
+            },
+            applyAuthUi() {
+                document.getElementById('auth-name').textContent = state.auth.name || 'Guest';
+                document.getElementById('auth-login-id').textContent = state.auth.loginId || 'not-set';
+                document.getElementById('auth-name-input').value = state.auth.name === 'Guest' ? '' : state.auth.name;
+                document.getElementById('auth-login-input').value = state.auth.loginId || '';
+                document.getElementById('auth-last-sync').textContent = state.auth.updatedAt ? new Date(state.auth.updatedAt).toLocaleString() : 'Never';
+                document.getElementById('auth-badge').classList.toggle('hidden', !state.auth.loggedIn);
+                if (state.auth.loggedIn) {
+                    document.getElementById('tp-user-name').value = state.auth.name;
+                    document.getElementById('tp-user-name').setAttribute('readonly', 'readonly');
+                } else {
+                    document.getElementById('tp-user-name').removeAttribute('readonly');
+                }
+                this.renderAccountLists();
+                const appAvatar = state.auth.avatar || this.avatarFromGender(state.auth.gender || 'male', state.auth.name || 'user');
+                document.getElementById('overlay-avatar-preview').src = appAvatar;
+            },
+            renderAccountLists() {
+                const favWrap = document.getElementById('auth-favorites');
+                const histWrap = document.getElementById('auth-history');
+                const fav = (state.auth.favorites || []).slice(-8).reverse();
+                const hist = (state.auth.history || []).slice(-10).reverse();
+                favWrap.innerHTML = fav.length ? fav.map((item, i) => `<div class="flex items-center justify-between bg-white/5 rounded px-2 py-1"><span class="truncate">${this.safeText(item.title || item.url || 'Media')}</span><button class="text-red-300" onclick="logic.removeFavorite(${i})">×</button></div>`).join('') : '<div class="text-gray-500">No favorites yet</div>';
+                histWrap.innerHTML = hist.length ? hist.map(item => `<div class="bg-white/5 rounded px-2 py-1 truncate">${this.safeText(item.title || item.url || 'Media')}</div>`).join('') : '<div class="text-gray-500">No history yet</div>';
+            },
+            safeText(v = '') { return String(v).replace(/[<>"'&]/g, ''); },
+            removeFavorite(reverseIndex) {
+                const idx = (state.auth.favorites || []).length - 1 - reverseIndex;
+                if (idx >= 0) state.auth.favorites.splice(idx, 1);
+                this.renderAccountLists();
+                this.saveUserMedia();
+            },
+            addCurrentToFavorites() {
+                if (!state.auth.loggedIn) { ui.showToast('Login required', 'error'); return; }
+                const entry = {
+                    title: state.video.currentYtId ? `YouTube (${state.video.currentYtId})` : (state.video.currentUrl || 'Current media'),
+                    url: state.video.currentYtId ? `https://www.youtube.com/watch?v=${state.video.currentYtId}` : state.video.currentUrl,
+                    type: state.video.type
+                };
+                state.auth.favorites = state.auth.favorites || [];
+                state.auth.favorites.push(entry);
+                this.renderAccountLists();
+                this.saveUserMedia();
+                ui.showToast('Added to favorites', 'success');
+            },
+            trackHistory(title, url, type = 'video') {
+                if (!state.auth.loggedIn) return;
+                state.auth.history = state.auth.history || [];
+                state.auth.history.push({ title, url, type, at: new Date().toISOString() });
+                if (state.auth.history.length > 100) state.auth.history = state.auth.history.slice(-100);
+                this.renderAccountLists();
+                this.saveUserMedia();
+            },
+            async registerAccount(fromOverlay = false) {
+                try {
+                    const loginId = document.getElementById('auth-login-input').value.trim().toLowerCase();
+                    const name = document.getElementById('auth-name-input').value.trim();
+                    const password = document.getElementById('auth-pin-input').value.trim();
+                    const avatar = this.updateOverlayAvatar();
+                    const data = await this.api('/api/auth/register', 'POST', { loginId, name, password, gender: this.selectedGender, avatar });
+                    state.auth = { loggedIn: true, loginId: data.loginId, name: data.name, gender: data.gender || this.selectedGender, avatar: data.avatar || avatar, updatedAt: data.updatedAt, favorites: [], history: [] };
+                    state.teleparty.userName = data.name;
+                    localStorage.setItem('sp_login_id', data.loginId);
+                    if (fromOverlay) localStorage.setItem('sp_login_password', password);
+                    this.applyAuthUi();
+                    this.hideAuthOverlay();
+                    ui.showToast('Account created and logged in', 'success');
+                    await this.saveUserMedia();
+                } catch (e) {
+                    const loginId = document.getElementById('auth-login-input').value.trim().toLowerCase();
+                    const name = document.getElementById('auth-name-input').value.trim();
+                    const password = document.getElementById('auth-pin-input').value.trim();
+                    if (e.message.includes('Failed to fetch') || e.message.includes('Network')) {
+                        const db = this.readLocalAccounts();
+                        if (db[loginId]) { ui.showToast('Offline ID already exists', 'error'); return; }
+                        db[loginId] = { loginId, name, password, gender: this.selectedGender, avatar: this.updateOverlayAvatar(), library: mockLibrary, playlist: mockPlaylist, favorites: [], history: [], updatedAt: new Date().toISOString() };
+                        this.writeLocalAccounts(db);
+                        state.auth = { loggedIn: true, loginId, name, gender: db[loginId].gender, avatar: db[loginId].avatar, updatedAt: db[loginId].updatedAt, favorites: [], history: [] };
+                        localStorage.setItem('sp_login_id', loginId); localStorage.setItem('sp_login_password', password);
+                        this.applyAuthUi(); this.hideAuthOverlay(); ui.showToast('Offline account created', 'success');
+                        return;
+                    }
+                    ui.showToast(e.message, 'error');
+                }
+            },
+            async loginAccount(fromOverlay = false) {
+                try {
+                    const loginId = document.getElementById('auth-login-input').value.trim().toLowerCase();
+                    const password = document.getElementById('auth-pin-input').value.trim();
+                    const data = await this.api('/api/auth/login', 'POST', { loginId, password });
+                    state.auth = { loggedIn: true, loginId: data.loginId, name: data.name, gender: data.gender || 'male', avatar: data.avatar || '', updatedAt: data.updatedAt || null, favorites: data.favorites || [], history: data.history || [] };
+                    state.teleparty.userName = data.name;
+                    localStorage.setItem('sp_login_id', data.loginId);
+                    if (fromOverlay || password) localStorage.setItem('sp_login_password', password);
+                    if (Array.isArray(data.library) && data.library.length) mockLibrary.splice(0, mockLibrary.length, ...data.library);
+                    if (Array.isArray(data.playlist) && data.playlist.length) mockPlaylist.splice(0, mockPlaylist.length, ...data.playlist);
+                    ui.renderLibrary(); ui.renderPlaylist();
+                    this.applyAuthUi();
+                    this.hideAuthOverlay();
+                    ui.showToast(`Logged in as ${data.name}`, 'success');
+                } catch (e) {
+                    const loginId = document.getElementById('auth-login-input').value.trim().toLowerCase();
+                    const password = document.getElementById('auth-pin-input').value.trim();
+                    if (e.message.includes('Failed to fetch') || e.message.includes('Network')) {
+                        const db = this.readLocalAccounts();
+                        const user = db[loginId];
+                        if (!user || user.password !== password) { ui.showToast('Offline login failed', 'error'); return; }
+                        state.auth = { loggedIn: true, loginId: user.loginId, name: user.name, gender: user.gender || 'male', avatar: user.avatar || '', updatedAt: user.updatedAt || null, favorites: user.favorites || [], history: user.history || [] };
+                        if (Array.isArray(user.library) && user.library.length) mockLibrary.splice(0, mockLibrary.length, ...user.library);
+                        if (Array.isArray(user.playlist) && user.playlist.length) mockPlaylist.splice(0, mockPlaylist.length, ...user.playlist);
+                        localStorage.setItem('sp_login_id', loginId); localStorage.setItem('sp_login_password', password);
+                        ui.renderLibrary(); ui.renderPlaylist(); this.applyAuthUi(); this.hideAuthOverlay(); ui.showToast(`Offline login: ${user.name}`, 'success');
+                        return;
+                    }
+                    ui.showToast(e.message, 'error');
+                }
+            },
+            logoutAccount() {
+                state.auth = { loggedIn: false, loginId: null, name: 'Guest', gender: 'male', avatar: '', updatedAt: null, favorites: [], history: [] };
+                state.teleparty.userName = 'Guest';
+                localStorage.removeItem('sp_login_id');
+                localStorage.removeItem('sp_login_password');
+                this.applyAuthUi();
+                this.showAuthOverlay();
+                ui.showToast('Logged out');
+            },
+            async saveUserMedia() {
+                if (!state.auth.loggedIn || !state.auth.loginId) return;
+                try {
+                    const res = await this.api(`/api/user-media/${encodeURIComponent(state.auth.loginId)}`, 'PUT', {
+                        name: state.auth.name,
+                        gender: state.auth.gender,
+                        avatar: state.auth.avatar,
+                        lastKnownUpdatedAt: state.auth.updatedAt || '',
+                        library: mockLibrary,
+                        playlist: mockPlaylist,
+                        favorites: state.auth.favorites || [],
+                        history: state.auth.history || []
+                    });
+                    state.auth.updatedAt = res.updatedAt || state.auth.updatedAt;
+                    this.applyAuthUi();
+                } catch (e) {
+                    if (e.message.includes('Failed to fetch') || e.message.includes('Network')) {
+                        const db = this.readLocalAccounts();
+                        if (!db[state.auth.loginId]) return;
+                        db[state.auth.loginId] = {
+                            ...db[state.auth.loginId],
+                            name: state.auth.name,
+                            gender: state.auth.gender,
+                            avatar: state.auth.avatar,
+                            library: mockLibrary,
+                            playlist: mockPlaylist,
+                            favorites: state.auth.favorites || [],
+                            history: state.auth.history || [],
+                            updatedAt: new Date().toISOString()
+                        };
+                        this.writeLocalAccounts(db);
+                        state.auth.updatedAt = db[state.auth.loginId].updatedAt;
+                        this.applyAuthUi();
+                        return;
+                    }
+                    if (e.message.includes('Sync conflict')) ui.showToast('Sync conflict detected. Please re-login to refresh latest data.', 'error');
+                }
+            },
+            exportLibrary() {
+                const payload = { library: mockLibrary, playlist: mockPlaylist, favorites: state.auth.favorites || [], history: state.auth.history || [] };
+                const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = `streamerpro-${state.auth.loginId || 'guest'}-backup.json`; a.click();
+                URL.revokeObjectURL(url);
+            },
+            importLibrary(event) {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    try {
+                        const data = JSON.parse(reader.result);
+                        if (Array.isArray(data.library)) mockLibrary.splice(0, mockLibrary.length, ...data.library);
+                        if (Array.isArray(data.playlist)) mockPlaylist.splice(0, mockPlaylist.length, ...data.playlist);
+                        if (Array.isArray(data.favorites)) state.auth.favorites = data.favorites;
+                        if (Array.isArray(data.history)) state.auth.history = data.history;
+                        ui.renderLibrary(); ui.renderPlaylist();
+                        this.renderAccountLists();
+                        this.saveUserMedia();
+                        ui.showToast('Data imported', 'success');
+                    } catch (_) { ui.showToast('Invalid import file', 'error'); }
+                };
+                reader.readAsText(file);
+            },
             toggleSleepTimer() {
                 if(this.sleepTimer) {
                     clearTimeout(this.sleepTimer); this.sleepTimer = null;
@@ -1098,14 +1538,14 @@
                 }
             },
             createRoom() { 
-                const name = document.getElementById('tp-user-name').value.trim();
+                const name = document.getElementById('tp-user-name').value.trim() || state.auth.name;
                 if(!name) { ui.showToast('Please enter your name', 'error'); return; }
                 const id = Math.random().toString(36).substring(2, 8).toUpperCase(); 
                 state.teleparty.userName = name;
                 this.connectRoom(id, 'host'); 
             },
             joinRoom() { 
-                const name = document.getElementById('tp-user-name').value.trim(); 
+                const name = document.getElementById('tp-user-name').value.trim() || state.auth.name; 
                 const id = document.getElementById('tp-room-id').value.trim().toUpperCase(); 
                 if(!name) { ui.showToast('Please enter your name', 'error'); return; } 
                 if(!id) { ui.showToast('Please enter a Room ID', 'error'); return; }
@@ -1219,22 +1659,39 @@
                 const url = document.getElementById('admin-url').value;
                 const title = document.getElementById('admin-title').value || 'Custom Stream';
                 const thumbInput = document.getElementById('admin-thumb').value;
+                const mpdCookieUrl = document.getElementById('admin-mpd-cookie-url').value.trim();
+                const mpdHeadersRaw = document.getElementById('admin-mpd-headers').value.trim();
+                const mpdWithCredentials = document.getElementById('admin-mpd-credentials').checked;
                 const ytId = ytHelper.extractId(url);
                 let type = 'mp4';
-                if(ytId) { type = 'youtube'; } else if (url.includes('.m3u8')) { type = 'hls'; }
+                if(ytId) { type = 'youtube'; } else { type = mediaHelper.detectType(url, 'mp4'); }
+                const normalizedUrl = mediaHelper.normalizeUrl(url);
+                let dashOptions = null;
+                if (type === 'dash') {
+                    let parsedHeaders = {};
+                    if (mpdHeadersRaw) {
+                        try { parsedHeaders = JSON.parse(mpdHeadersRaw); } catch (_) { ui.showToast('Invalid MPD headers JSON', 'error'); return; }
+                    }
+                    dashOptions = { cookieUrl: mpdCookieUrl || '', headers: parsedHeaders, withCredentials: !!mpdWithCredentials };
+                }
                 const finalThumb = thumbInput || (ytId ? `https://img.youtube.com/vi/${ytId}/maxresdefault.jpg` : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=600&auto=format&fit=crop');
                 if (mediaType === 'video') {
-                    mockLibrary.unshift({ id: 'custom-' + Date.now(), type: type, title: title, url: url, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Custom', isCustom: true });
-                    ui.renderLibrary(); ui.closeAllPanels(); engine.loadVideo(url, type, ytId); ui.switchTab('view-video');
+                    mockLibrary.unshift({ id: 'custom-' + Date.now(), type: type, title: title, url: normalizedUrl, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Custom', isCustom: true, options: dashOptions });
+                    ui.renderLibrary(); logic.saveUserMedia(); ui.closeAllPanels(); (ytId ? engine.loadVideo(normalizedUrl, type, ytId, false, dashOptions) : engine.playSmart(normalizedUrl, false, dashOptions)); ui.switchTab('view-video');
                 } else {
-                    mockPlaylist.unshift({ title: title, artist: ytId ? 'YouTube Audio' : 'Custom Stream', url: url, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Live', isCustom: true, type: type === 'youtube' ? 'youtube' : 'native' });
-                    ui.renderPlaylist(); ui.closeAllPanels(); musicEngine.loadTrack(0); ui.switchTab('view-music');
+                    mockPlaylist.unshift({ title: title, artist: ytId ? 'YouTube Audio' : 'Custom Stream', url: normalizedUrl, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Live', isCustom: true, type: type === 'youtube' ? 'youtube' : 'native' });
+                    ui.renderPlaylist(); logic.saveUserMedia(); ui.closeAllPanels(); musicEngine.loadTrack(0); ui.switchTab('view-music');
                 }
                 document.getElementById('add-stream-form').reset();
             },
+            playLibraryItem(index) {
+                const vid = mockLibrary[index];
+                if (!vid) return;
+                engine.loadVideo(vid.url, vid.type, vid.ytId, false, vid.options || null);
+            },
             removeVideo(id) {
                 const idx = mockLibrary.findIndex(v => v.id === id);
-                if(idx > -1) { mockLibrary.splice(idx, 1); ui.renderLibrary(); ui.showToast('Video removed'); }
+                if(idx > -1) { mockLibrary.splice(idx, 1); ui.renderLibrary(); logic.saveUserMedia(); ui.showToast('Video removed'); }
             },
             removeTrack(index) {
                 mockPlaylist.splice(index, 1);
@@ -1244,7 +1701,7 @@
                     if(mockPlaylist.length > 0) musicEngine.loadTrack(0, false);
                     else { document.getElementById('music-title').textContent = 'No tracks'; document.getElementById('music-artist').textContent = ''; }
                 } else if (state.music.currentTrackIndex > index) { state.music.currentTrackIndex--; }
-                ui.renderPlaylist(); ui.showToast('Track removed');
+                ui.renderPlaylist(); logic.saveUserMedia(); ui.showToast('Track removed');
             }
         };
 
@@ -1271,7 +1728,8 @@
                         
                         if (action === 'load' && payload.video) {
                             if (payload.video.url !== state.video.currentUrl) {
-                                engine.loadVideo(payload.video.url, payload.video.type, payload.video.ytId, true);
+                                if (payload.video.type) engine.loadVideo(payload.video.url, payload.video.type, payload.video.ytId, true, payload.video.options || null);
+                                else engine.playSmart(payload.video.url, true, payload.video.options || null);
                             }
                         } else if (action === 'play') {
                             if(payload.time !== undefined) engine.forceSeek(payload.time);
@@ -1289,6 +1747,29 @@
             document.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click', () => ui.switchTab(btn.dataset.target)));
             ui.renderLibrary(); ui.renderPlaylist(); engine.init(); musicEngine.init(); orbEngine.init(); searchEngine.init();
             ui.switchTab('view-video');
+            logic.applyAuthUi();
+            logic.updateOverlayAvatar();
+            ['overlay-name', 'overlay-login-id'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener('input', () => logic.updateOverlayAvatar());
+            });
+
+            const rememberedLoginId = localStorage.getItem('sp_login_id');
+            const rememberedPassword = localStorage.getItem('sp_login_password');
+            if (rememberedLoginId) {
+                document.getElementById('auth-login-input').value = rememberedLoginId;
+                document.getElementById('overlay-login-id').value = rememberedLoginId;
+                if (rememberedPassword) {
+                    document.getElementById('auth-pin-input').value = rememberedPassword;
+                    document.getElementById('overlay-password').value = rememberedPassword;
+                    logic.loginAccount(true);
+                } else {
+                    ui.showToast('Enter password to login', 'success');
+                    logic.showAuthOverlay();
+                }
+            } else {
+                logic.showAuthOverlay();
+            }
         });
     </script>
 </body>
