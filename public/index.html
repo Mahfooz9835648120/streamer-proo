@@ -403,6 +403,53 @@
             </div>
         </aside>
 
+        <aside id="account-panel" class="fixed top-0 right-0 h-full w-full max-w-sm glass-panel z-50 transform translate-x-full transition-transform duration-400 flex flex-col">
+            <div class="p-6 border-b border-border flex items-center justify-between">
+                <h2 class="text-sm font-bold tracking-widest">ACCOUNT</h2>
+                <button onclick="ui.closeAllPanels()" class="p-2 hover:bg-white/10 rounded-full"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="p-6 flex-1 overflow-y-auto space-y-6">
+                <div class="glass rounded-xl p-4 text-xs text-gray-300">
+                    <p>Logged in as: <span id="auth-name" class="font-bold text-white">Guest</span></p>
+                    <p class="mt-1">Login ID: <span id="auth-login-id" class="font-mono text-blue-300">not-set</span></p>
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] font-bold tracking-widest text-gray-500">DISPLAY NAME</label>
+                    <input type="text" id="auth-name-input" placeholder="Your Name" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30">
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] font-bold tracking-widest text-gray-500">LOGIN ID (3-20: a-z, 0-9, _, -)</label>
+                    <input type="text" id="auth-login-input" placeholder="your_id" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30 lowercase">
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] font-bold tracking-widest text-gray-500">PIN (4-8 digits)</label>
+                    <input type="password" id="auth-pin-input" placeholder="1234" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30">
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="logic.registerAccount()" class="flex-1 bg-white text-black font-semibold py-3 rounded-xl hover:bg-gray-200 transition-colors">Create ID</button>
+                    <button onclick="logic.loginAccount()" class="flex-1 border border-white/20 text-white font-semibold py-3 rounded-xl hover:bg-white/5 transition-colors">Login</button>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="logic.exportLibrary()" class="border border-white/20 text-white font-semibold py-2 rounded-xl hover:bg-white/5 transition-colors text-xs">Export Data</button>
+                    <label class="border border-white/20 text-white font-semibold py-2 rounded-xl hover:bg-white/5 transition-colors text-xs text-center cursor-pointer">
+                        Import Data
+                        <input type="file" id="auth-import-input" class="hidden" accept="application/json" onchange="logic.importLibrary(event)">
+                    </label>
+                </div>
+                <button onclick="logic.addCurrentToFavorites()" class="w-full border border-yellow-500/30 text-yellow-300 font-semibold py-2 rounded-xl hover:bg-yellow-500/10 transition-colors text-xs">Add Current Media to Favorites</button>
+                <div class="text-[10px] text-gray-500">Last synced: <span id="auth-last-sync">Never</span></div>
+                <div class="space-y-2">
+                    <h3 class="text-[10px] font-bold tracking-widest text-gray-400">FAVORITES</h3>
+                    <div id="auth-favorites" class="max-h-24 overflow-y-auto space-y-1 text-xs text-gray-300"></div>
+                </div>
+                <div class="space-y-2">
+                    <h3 class="text-[10px] font-bold tracking-widest text-gray-400">HISTORY</h3>
+                    <div id="auth-history" class="max-h-28 overflow-y-auto space-y-1 text-xs text-gray-400"></div>
+                </div>
+                <button onclick="logic.logoutAccount()" class="w-full bg-red-500/10 text-red-400 border border-red-500/20 font-semibold py-3 rounded-xl hover:bg-red-500/20 transition-colors text-sm">Logout</button>
+            </div>
+        </aside>
+
         <!-- Watch Together Panel -->
         <aside id="watch-together-panel" class="fixed top-0 right-0 h-full w-full max-w-sm glass-panel z-50 transform translate-x-full transition-transform duration-400 flex flex-col">
             <div class="p-6 border-b border-border flex items-center justify-between shrink-0">
@@ -890,6 +937,35 @@
                 const duration = Number.isFinite(item.duration) ? item.duration : (Number.isFinite(item.lengthSeconds) ? item.lengthSeconds : -1);
                 return { ytId, title, uploader, thumb, duration };
             },
+            esc(str = '') {
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            },
+            normalizeResult(item) {
+                const ytId = ytHelper.extractId(item.url || '') || item.id || item.videoId || item.videoIdOrNull;
+                if (!ytId) return null;
+                const title = item.title || item.name || 'YouTube video';
+                const uploader = item.uploaderName || item.author || item.uploader || 'YouTube';
+                const thumb = item.thumbnail || item.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
+                const duration = Number.isFinite(item.duration) ? item.duration : (Number.isFinite(item.lengthSeconds) ? item.lengthSeconds : -1);
+                return { ytId, title, uploader, thumb, duration };
+            },
+            async fetchPiped(base, query) {
+                const res = await fetch(`${base}/search?q=${encodeURIComponent(query)}&filter=videos`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return (data?.items || []).map(item => this.normalizeResult(item)).filter(Boolean);
+            },
+            async fetchInvidious(base, query) {
+                const res = await fetch(`${base}/api/v1/search?q=${encodeURIComponent(query)}&type=video`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return (Array.isArray(data) ? data : []).map(item => this.normalizeResult(item)).filter(Boolean);
+            },
             async performSearch(query) {
                 const directYtId = ytHelper.extractId(query);
                 if (directYtId) {
@@ -934,6 +1010,9 @@
                         </div>`;
                 }).join('');
                 lucide.createIcons();
+            },
+            playResultFromEncoded(ytId, encodedTitle, encodedThumb) {
+                this.playResult(ytId, decodeURIComponent(encodedTitle), decodeURIComponent(encodedThumb));
             },
             playResultFromEncoded(ytId, encodedTitle, encodedThumb) {
                 this.playResult(ytId, decodeURIComponent(encodedTitle), decodeURIComponent(encodedThumb));
@@ -1640,6 +1719,244 @@
 
         const logic = {
             sleepTimer: null,
+            selectedGender: 'male',
+            avatarFromGender(gender, seed) {
+                const style = gender === 'female' ? 'avataaars' : 'adventurer';
+                return `https://api.dicebear.com/9.x/${style}/svg?seed=${encodeURIComponent(seed || 'StreamerPro')}`;
+            },
+            updateOverlayAvatar() {
+                const seed = document.getElementById('overlay-name')?.value || document.getElementById('overlay-login-id')?.value || 'StreamerPro';
+                const avatar = this.avatarFromGender(this.selectedGender, seed);
+                document.getElementById('overlay-avatar-preview').src = avatar;
+                document.getElementById('gender-male').classList.toggle('bg-white/10', this.selectedGender === 'male');
+                document.getElementById('gender-female').classList.toggle('bg-white/10', this.selectedGender === 'female');
+                return avatar;
+            },
+            selectGender(gender) {
+                this.selectedGender = gender;
+                this.updateOverlayAvatar();
+            },
+            hideAuthOverlay() { document.getElementById('auth-overlay').classList.add('hidden'); },
+            showAuthOverlay() { document.getElementById('auth-overlay').classList.remove('hidden'); },
+            continueGuest() {
+                state.auth = { loggedIn: false, loginId: null, name: 'Guest', gender: 'male', avatar: '', updatedAt: null, favorites: [], history: [] };
+                state.teleparty.userName = 'Guest';
+                this.hideAuthOverlay();
+                ui.showToast('Guest mode enabled', 'success');
+            },
+            readLocalAccounts() { return JSON.parse(localStorage.getItem('sp_local_accounts') || '{}'); },
+            writeLocalAccounts(data) { localStorage.setItem('sp_local_accounts', JSON.stringify(data)); },
+            copyOverlayToPanel() {
+                const name = document.getElementById('overlay-name').value.trim();
+                const id = document.getElementById('overlay-login-id').value.trim().toLowerCase();
+                const password = document.getElementById('overlay-password').value.trim();
+                document.getElementById('auth-name-input').value = name;
+                document.getElementById('auth-login-input').value = id;
+                document.getElementById('auth-pin-input').value = password;
+            },
+            async overlayRegister() { this.copyOverlayToPanel(); await this.registerAccount(true); },
+            async overlayLogin() { this.copyOverlayToPanel(); await this.loginAccount(true); },
+            async api(path, method = 'GET', body = null) {
+                const res = await fetch(path, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: body ? JSON.stringify(body) : null
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || 'Request failed');
+                return data;
+            },
+            applyAuthUi() {
+                document.getElementById('auth-name').textContent = state.auth.name || 'Guest';
+                document.getElementById('auth-login-id').textContent = state.auth.loginId || 'not-set';
+                document.getElementById('auth-name-input').value = state.auth.name === 'Guest' ? '' : state.auth.name;
+                document.getElementById('auth-login-input').value = state.auth.loginId || '';
+                document.getElementById('auth-last-sync').textContent = state.auth.updatedAt ? new Date(state.auth.updatedAt).toLocaleString() : 'Never';
+                document.getElementById('auth-badge').classList.toggle('hidden', !state.auth.loggedIn);
+                if (state.auth.loggedIn) {
+                    document.getElementById('tp-user-name').value = state.auth.name;
+                    document.getElementById('tp-user-name').setAttribute('readonly', 'readonly');
+                } else {
+                    document.getElementById('tp-user-name').removeAttribute('readonly');
+                }
+                this.renderAccountLists();
+                const appAvatar = state.auth.avatar || this.avatarFromGender(state.auth.gender || 'male', state.auth.name || 'user');
+                document.getElementById('overlay-avatar-preview').src = appAvatar;
+            },
+            renderAccountLists() {
+                const favWrap = document.getElementById('auth-favorites');
+                const histWrap = document.getElementById('auth-history');
+                const fav = (state.auth.favorites || []).slice(-8).reverse();
+                const hist = (state.auth.history || []).slice(-10).reverse();
+                favWrap.innerHTML = fav.length ? fav.map((item, i) => `<div class="flex items-center justify-between bg-white/5 rounded px-2 py-1"><span class="truncate">${this.safeText(item.title || item.url || 'Media')}</span><button class="text-red-300" onclick="logic.removeFavorite(${i})">×</button></div>`).join('') : '<div class="text-gray-500">No favorites yet</div>';
+                histWrap.innerHTML = hist.length ? hist.map(item => `<div class="bg-white/5 rounded px-2 py-1 truncate">${this.safeText(item.title || item.url || 'Media')}</div>`).join('') : '<div class="text-gray-500">No history yet</div>';
+            },
+            safeText(v = '') { return String(v).replace(/[<>"'&]/g, ''); },
+            removeFavorite(reverseIndex) {
+                const idx = (state.auth.favorites || []).length - 1 - reverseIndex;
+                if (idx >= 0) state.auth.favorites.splice(idx, 1);
+                this.renderAccountLists();
+                this.saveUserMedia();
+            },
+            addCurrentToFavorites() {
+                if (!state.auth.loggedIn) { ui.showToast('Login required', 'error'); return; }
+                const entry = {
+                    title: state.video.currentYtId ? `YouTube (${state.video.currentYtId})` : (state.video.currentUrl || 'Current media'),
+                    url: state.video.currentYtId ? `https://www.youtube.com/watch?v=${state.video.currentYtId}` : state.video.currentUrl,
+                    type: state.video.type
+                };
+                state.auth.favorites = state.auth.favorites || [];
+                state.auth.favorites.push(entry);
+                this.renderAccountLists();
+                this.saveUserMedia();
+                ui.showToast('Added to favorites', 'success');
+            },
+            trackHistory(title, url, type = 'video') {
+                if (!state.auth.loggedIn) return;
+                state.auth.history = state.auth.history || [];
+                state.auth.history.push({ title, url, type, at: new Date().toISOString() });
+                if (state.auth.history.length > 100) state.auth.history = state.auth.history.slice(-100);
+                this.renderAccountLists();
+                this.saveUserMedia();
+            },
+            async registerAccount(fromOverlay = false) {
+                try {
+                    const loginId = document.getElementById('auth-login-input').value.trim().toLowerCase();
+                    const name = document.getElementById('auth-name-input').value.trim();
+                    const password = document.getElementById('auth-pin-input').value.trim();
+                    const avatar = this.updateOverlayAvatar();
+                    const data = await this.api('/api/auth/register', 'POST', { loginId, name, password, gender: this.selectedGender, avatar });
+                    state.auth = { loggedIn: true, loginId: data.loginId, name: data.name, gender: data.gender || this.selectedGender, avatar: data.avatar || avatar, updatedAt: data.updatedAt, favorites: [], history: [] };
+                    state.teleparty.userName = data.name;
+                    localStorage.setItem('sp_login_id', data.loginId);
+                    if (fromOverlay) localStorage.setItem('sp_login_password', password);
+                    this.applyAuthUi();
+                    this.hideAuthOverlay();
+                    ui.showToast('Account created and logged in', 'success');
+                    await this.saveUserMedia();
+                } catch (e) {
+                    const loginId = document.getElementById('auth-login-input').value.trim().toLowerCase();
+                    const name = document.getElementById('auth-name-input').value.trim();
+                    const password = document.getElementById('auth-pin-input').value.trim();
+                    if (e.message.includes('Failed to fetch') || e.message.includes('Network')) {
+                        const db = this.readLocalAccounts();
+                        if (db[loginId]) { ui.showToast('Offline ID already exists', 'error'); return; }
+                        db[loginId] = { loginId, name, password, gender: this.selectedGender, avatar: this.updateOverlayAvatar(), library: mockLibrary, playlist: mockPlaylist, favorites: [], history: [], updatedAt: new Date().toISOString() };
+                        this.writeLocalAccounts(db);
+                        state.auth = { loggedIn: true, loginId, name, gender: db[loginId].gender, avatar: db[loginId].avatar, updatedAt: db[loginId].updatedAt, favorites: [], history: [] };
+                        localStorage.setItem('sp_login_id', loginId); localStorage.setItem('sp_login_password', password);
+                        this.applyAuthUi(); this.hideAuthOverlay(); ui.showToast('Offline account created', 'success');
+                        return;
+                    }
+                    ui.showToast(e.message, 'error');
+                }
+            },
+            async loginAccount(fromOverlay = false) {
+                try {
+                    const loginId = document.getElementById('auth-login-input').value.trim().toLowerCase();
+                    const password = document.getElementById('auth-pin-input').value.trim();
+                    const data = await this.api('/api/auth/login', 'POST', { loginId, password });
+                    state.auth = { loggedIn: true, loginId: data.loginId, name: data.name, gender: data.gender || 'male', avatar: data.avatar || '', updatedAt: data.updatedAt || null, favorites: data.favorites || [], history: data.history || [] };
+                    state.teleparty.userName = data.name;
+                    localStorage.setItem('sp_login_id', data.loginId);
+                    if (fromOverlay || password) localStorage.setItem('sp_login_password', password);
+                    if (Array.isArray(data.library) && data.library.length) mockLibrary.splice(0, mockLibrary.length, ...data.library);
+                    if (Array.isArray(data.playlist) && data.playlist.length) mockPlaylist.splice(0, mockPlaylist.length, ...data.playlist);
+                    ui.renderLibrary(); ui.renderPlaylist();
+                    this.applyAuthUi();
+                    this.hideAuthOverlay();
+                    ui.showToast(`Logged in as ${data.name}`, 'success');
+                } catch (e) {
+                    const loginId = document.getElementById('auth-login-input').value.trim().toLowerCase();
+                    const password = document.getElementById('auth-pin-input').value.trim();
+                    if (e.message.includes('Failed to fetch') || e.message.includes('Network')) {
+                        const db = this.readLocalAccounts();
+                        const user = db[loginId];
+                        if (!user || user.password !== password) { ui.showToast('Offline login failed', 'error'); return; }
+                        state.auth = { loggedIn: true, loginId: user.loginId, name: user.name, gender: user.gender || 'male', avatar: user.avatar || '', updatedAt: user.updatedAt || null, favorites: user.favorites || [], history: user.history || [] };
+                        if (Array.isArray(user.library) && user.library.length) mockLibrary.splice(0, mockLibrary.length, ...user.library);
+                        if (Array.isArray(user.playlist) && user.playlist.length) mockPlaylist.splice(0, mockPlaylist.length, ...user.playlist);
+                        localStorage.setItem('sp_login_id', loginId); localStorage.setItem('sp_login_password', password);
+                        ui.renderLibrary(); ui.renderPlaylist(); this.applyAuthUi(); this.hideAuthOverlay(); ui.showToast(`Offline login: ${user.name}`, 'success');
+                        return;
+                    }
+                    ui.showToast(e.message, 'error');
+                }
+            },
+            logoutAccount() {
+                state.auth = { loggedIn: false, loginId: null, name: 'Guest', gender: 'male', avatar: '', updatedAt: null, favorites: [], history: [] };
+                state.teleparty.userName = 'Guest';
+                localStorage.removeItem('sp_login_id');
+                localStorage.removeItem('sp_login_password');
+                this.applyAuthUi();
+                this.showAuthOverlay();
+                ui.showToast('Logged out');
+            },
+            async saveUserMedia() {
+                if (!state.auth.loggedIn || !state.auth.loginId) return;
+                try {
+                    const res = await this.api(`/api/user-media/${encodeURIComponent(state.auth.loginId)}`, 'PUT', {
+                        name: state.auth.name,
+                        gender: state.auth.gender,
+                        avatar: state.auth.avatar,
+                        lastKnownUpdatedAt: state.auth.updatedAt || '',
+                        library: mockLibrary,
+                        playlist: mockPlaylist,
+                        favorites: state.auth.favorites || [],
+                        history: state.auth.history || []
+                    });
+                    state.auth.updatedAt = res.updatedAt || state.auth.updatedAt;
+                    this.applyAuthUi();
+                } catch (e) {
+                    if (e.message.includes('Failed to fetch') || e.message.includes('Network')) {
+                        const db = this.readLocalAccounts();
+                        if (!db[state.auth.loginId]) return;
+                        db[state.auth.loginId] = {
+                            ...db[state.auth.loginId],
+                            name: state.auth.name,
+                            gender: state.auth.gender,
+                            avatar: state.auth.avatar,
+                            library: mockLibrary,
+                            playlist: mockPlaylist,
+                            favorites: state.auth.favorites || [],
+                            history: state.auth.history || [],
+                            updatedAt: new Date().toISOString()
+                        };
+                        this.writeLocalAccounts(db);
+                        state.auth.updatedAt = db[state.auth.loginId].updatedAt;
+                        this.applyAuthUi();
+                        return;
+                    }
+                    if (e.message.includes('Sync conflict')) ui.showToast('Sync conflict detected. Please re-login to refresh latest data.', 'error');
+                }
+            },
+            exportLibrary() {
+                const payload = { library: mockLibrary, playlist: mockPlaylist, favorites: state.auth.favorites || [], history: state.auth.history || [] };
+                const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = `streamerpro-${state.auth.loginId || 'guest'}-backup.json`; a.click();
+                URL.revokeObjectURL(url);
+            },
+            importLibrary(event) {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    try {
+                        const data = JSON.parse(reader.result);
+                        if (Array.isArray(data.library)) mockLibrary.splice(0, mockLibrary.length, ...data.library);
+                        if (Array.isArray(data.playlist)) mockPlaylist.splice(0, mockPlaylist.length, ...data.playlist);
+                        if (Array.isArray(data.favorites)) state.auth.favorites = data.favorites;
+                        if (Array.isArray(data.history)) state.auth.history = data.history;
+                        ui.renderLibrary(); ui.renderPlaylist();
+                        this.renderAccountLists();
+                        this.saveUserMedia();
+                        ui.showToast('Data imported', 'success');
+                    } catch (_) { ui.showToast('Invalid import file', 'error'); }
+                };
+                reader.readAsText(file);
+            },
             toggleSleepTimer() {
                 if (this.sleepTimer) {
                     clearTimeout(this.sleepTimer); this.sleepTimer = null;
@@ -1819,6 +2136,9 @@
                 const url = document.getElementById('admin-url').value;
                 const title = document.getElementById('admin-title').value || 'Custom Stream';
                 const thumbInput = document.getElementById('admin-thumb').value;
+                const mpdCookieUrl = document.getElementById('admin-mpd-cookie-url').value.trim();
+                const mpdHeadersRaw = document.getElementById('admin-mpd-headers').value.trim();
+                const mpdWithCredentials = document.getElementById('admin-mpd-credentials').checked;
                 const ytId = ytHelper.extractId(url);
                 let type = ytId ? 'youtube' : mediaHelper.detectType(url, 'mp4');
                 const normalizedUrl = mediaHelper.normalizeUrl(url);
