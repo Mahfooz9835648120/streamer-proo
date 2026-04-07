@@ -408,30 +408,9 @@
                     <label class="text-[10px] font-bold tracking-widest text-gray-500">LOGIN ID (3-20: a-z, 0-9, _, -)</label>
                     <input type="text" id="auth-login-input" placeholder="your_id" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30 lowercase">
                 </div>
-                <div class="space-y-2">
-                    <label class="text-[10px] font-bold tracking-widest text-gray-500">PIN (4-8 digits)</label>
-                    <input type="password" id="auth-pin-input" placeholder="1234" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30">
-                </div>
                 <div class="flex gap-2">
                     <button onclick="logic.registerAccount()" class="flex-1 bg-white text-black font-semibold py-3 rounded-xl hover:bg-gray-200 transition-colors">Create ID</button>
                     <button onclick="logic.loginAccount()" class="flex-1 border border-white/20 text-white font-semibold py-3 rounded-xl hover:bg-white/5 transition-colors">Login</button>
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                    <button onclick="logic.exportLibrary()" class="border border-white/20 text-white font-semibold py-2 rounded-xl hover:bg-white/5 transition-colors text-xs">Export Data</button>
-                    <label class="border border-white/20 text-white font-semibold py-2 rounded-xl hover:bg-white/5 transition-colors text-xs text-center cursor-pointer">
-                        Import Data
-                        <input type="file" id="auth-import-input" class="hidden" accept="application/json" onchange="logic.importLibrary(event)">
-                    </label>
-                </div>
-                <button onclick="logic.addCurrentToFavorites()" class="w-full border border-yellow-500/30 text-yellow-300 font-semibold py-2 rounded-xl hover:bg-yellow-500/10 transition-colors text-xs">Add Current Media to Favorites</button>
-                <div class="text-[10px] text-gray-500">Last synced: <span id="auth-last-sync">Never</span></div>
-                <div class="space-y-2">
-                    <h3 class="text-[10px] font-bold tracking-widest text-gray-400">FAVORITES</h3>
-                    <div id="auth-favorites" class="max-h-24 overflow-y-auto space-y-1 text-xs text-gray-300"></div>
-                </div>
-                <div class="space-y-2">
-                    <h3 class="text-[10px] font-bold tracking-widest text-gray-400">HISTORY</h3>
-                    <div id="auth-history" class="max-h-28 overflow-y-auto space-y-1 text-xs text-gray-400"></div>
                 </div>
                 <button onclick="logic.logoutAccount()" class="w-full bg-red-500/10 text-red-400 border border-red-500/20 font-semibold py-3 rounded-xl hover:bg-red-500/20 transition-colors text-sm">Logout</button>
             </div>
@@ -550,7 +529,7 @@
             activeView: 'view-video',
             video: { isPlaying: false, isMuted: false, quality: 'auto', hls: null, dash: null, type: 'native', currentYtId: null, currentUrl: null },
             music: { isPlaying: false, currentTrackIndex: 0, audioContext: null, analyser: null, dataArray: null, type: 'native' },
-            auth: { loggedIn: false, loginId: null, name: 'Guest', gender: 'male', avatar: '', updatedAt: null, favorites: [], history: [] },
+            auth: { loggedIn: false, loginId: null, name: 'Guest' },
             teleparty: { inRoom: false, roomId: null, role: null, userName: 'Guest' },
             ui: { controlsVisible: true, controlsTimeout: null }
         };
@@ -684,16 +663,7 @@
                 this.resultsContainer.classList.remove('hidden'); lucide.createIcons();
 
                 let results = [];
-                try {
-                    const res = await fetch(`/api/search-youtube?q=${encodeURIComponent(query)}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        results = Array.isArray(data?.items) ? data.items : [];
-                    }
-                } catch (_e) {}
-
                 for (const provider of this.providers) {
-                    if (results.length > 0) break;
                     try {
                         results = provider.type === 'piped'
                             ? await this.fetchPiped(provider.base, query)
@@ -994,7 +964,6 @@
                 
                 const normalizedUrl = mediaHelper.normalizeUrl(url);
                 state.video.type = type; state.video.currentYtId = ytId; state.video.currentUrl = normalizedUrl;
-                logic.trackHistory(`Video: ${type}`, normalizedUrl, 'video');
 
                 if (!isSync) { logic.emitSync('load', { video: { url: normalizedUrl, type, ytId } }); }
 
@@ -1262,35 +1231,6 @@
         // ==========================================
         const logic = {
             sleepTimer: null,
-            selectedGender: 'male',
-            avatarFromGender(gender, seed) {
-                const style = gender === 'female' ? 'avataaars' : 'adventurer';
-                return `https://api.dicebear.com/9.x/${style}/svg?seed=${encodeURIComponent(seed || 'StreamerPro')}`;
-            },
-            updateOverlayAvatar() {
-                const seed = document.getElementById('overlay-name')?.value || document.getElementById('overlay-login-id')?.value || 'StreamerPro';
-                const avatar = this.avatarFromGender(this.selectedGender, seed);
-                document.getElementById('overlay-avatar-preview').src = avatar;
-                document.getElementById('gender-male').classList.toggle('bg-white/10', this.selectedGender === 'male');
-                document.getElementById('gender-female').classList.toggle('bg-white/10', this.selectedGender === 'female');
-                return avatar;
-            },
-            selectGender(gender) {
-                this.selectedGender = gender;
-                this.updateOverlayAvatar();
-            },
-            hideAuthOverlay() { document.getElementById('auth-overlay').classList.add('hidden'); },
-            showAuthOverlay() { document.getElementById('auth-overlay').classList.remove('hidden'); },
-            copyOverlayToPanel() {
-                const name = document.getElementById('overlay-name').value.trim();
-                const id = document.getElementById('overlay-login-id').value.trim().toLowerCase();
-                const password = document.getElementById('overlay-password').value.trim();
-                document.getElementById('auth-name-input').value = name;
-                document.getElementById('auth-login-input').value = id;
-                document.getElementById('auth-pin-input').value = password;
-            },
-            async overlayRegister() { this.copyOverlayToPanel(); await this.registerAccount(true); },
-            async overlayLogin() { this.copyOverlayToPanel(); await this.loginAccount(true); },
             async api(path, method = 'GET', body = null) {
                 const res = await fetch(path, {
                     method,
@@ -1306,7 +1246,6 @@
                 document.getElementById('auth-login-id').textContent = state.auth.loginId || 'not-set';
                 document.getElementById('auth-name-input').value = state.auth.name === 'Guest' ? '' : state.auth.name;
                 document.getElementById('auth-login-input').value = state.auth.loginId || '';
-                document.getElementById('auth-last-sync').textContent = state.auth.updatedAt ? new Date(state.auth.updatedAt).toLocaleString() : 'Never';
                 document.getElementById('auth-badge').classList.toggle('hidden', !state.auth.loggedIn);
                 if (state.auth.loggedIn) {
                     document.getElementById('tp-user-name').value = state.auth.name;
@@ -1314,134 +1253,50 @@
                 } else {
                     document.getElementById('tp-user-name').removeAttribute('readonly');
                 }
-                this.renderAccountLists();
-                const appAvatar = state.auth.avatar || this.avatarFromGender(state.auth.gender || 'male', state.auth.name || 'user');
-                document.getElementById('overlay-avatar-preview').src = appAvatar;
             },
-            renderAccountLists() {
-                const favWrap = document.getElementById('auth-favorites');
-                const histWrap = document.getElementById('auth-history');
-                const fav = (state.auth.favorites || []).slice(-8).reverse();
-                const hist = (state.auth.history || []).slice(-10).reverse();
-                favWrap.innerHTML = fav.length ? fav.map((item, i) => `<div class="flex items-center justify-between bg-white/5 rounded px-2 py-1"><span class="truncate">${this.safeText(item.title || item.url || 'Media')}</span><button class="text-red-300" onclick="logic.removeFavorite(${i})">×</button></div>`).join('') : '<div class="text-gray-500">No favorites yet</div>';
-                histWrap.innerHTML = hist.length ? hist.map(item => `<div class="bg-white/5 rounded px-2 py-1 truncate">${this.safeText(item.title || item.url || 'Media')}</div>`).join('') : '<div class="text-gray-500">No history yet</div>';
-            },
-            safeText(v = '') { return String(v).replace(/[<>"'&]/g, ''); },
-            removeFavorite(reverseIndex) {
-                const idx = (state.auth.favorites || []).length - 1 - reverseIndex;
-                if (idx >= 0) state.auth.favorites.splice(idx, 1);
-                this.renderAccountLists();
-                this.saveUserMedia();
-            },
-            addCurrentToFavorites() {
-                if (!state.auth.loggedIn) { ui.showToast('Login required', 'error'); return; }
-                const entry = {
-                    title: state.video.currentYtId ? `YouTube (${state.video.currentYtId})` : (state.video.currentUrl || 'Current media'),
-                    url: state.video.currentYtId ? `https://www.youtube.com/watch?v=${state.video.currentYtId}` : state.video.currentUrl,
-                    type: state.video.type
-                };
-                state.auth.favorites = state.auth.favorites || [];
-                state.auth.favorites.push(entry);
-                this.renderAccountLists();
-                this.saveUserMedia();
-                ui.showToast('Added to favorites', 'success');
-            },
-            trackHistory(title, url, type = 'video') {
-                if (!state.auth.loggedIn) return;
-                state.auth.history = state.auth.history || [];
-                state.auth.history.push({ title, url, type, at: new Date().toISOString() });
-                if (state.auth.history.length > 100) state.auth.history = state.auth.history.slice(-100);
-                this.renderAccountLists();
-                this.saveUserMedia();
-            },
-            async registerAccount(fromOverlay = false) {
+            async registerAccount() {
                 try {
                     const loginId = document.getElementById('auth-login-input').value.trim().toLowerCase();
                     const name = document.getElementById('auth-name-input').value.trim();
-                    const password = document.getElementById('auth-pin-input').value.trim();
-                    const avatar = this.updateOverlayAvatar();
-                    const data = await this.api('/api/auth/register', 'POST', { loginId, name, password, gender: this.selectedGender, avatar });
-                    state.auth = { loggedIn: true, loginId: data.loginId, name: data.name, gender: data.gender || this.selectedGender, avatar: data.avatar || avatar, updatedAt: data.updatedAt, favorites: [], history: [] };
+                    const data = await this.api('/api/auth/register', 'POST', { loginId, name });
+                    state.auth = { loggedIn: true, loginId: data.loginId, name: data.name };
                     state.teleparty.userName = data.name;
                     localStorage.setItem('sp_login_id', data.loginId);
-                    if (fromOverlay) localStorage.setItem('sp_login_password', password);
                     this.applyAuthUi();
-                    this.hideAuthOverlay();
                     ui.showToast('Account created and logged in', 'success');
                     await this.saveUserMedia();
                 } catch (e) { ui.showToast(e.message, 'error'); }
             },
-            async loginAccount(fromOverlay = false) {
+            async loginAccount() {
                 try {
                     const loginId = document.getElementById('auth-login-input').value.trim().toLowerCase();
-                    const password = document.getElementById('auth-pin-input').value.trim();
-                    const data = await this.api('/api/auth/login', 'POST', { loginId, password });
-                    state.auth = { loggedIn: true, loginId: data.loginId, name: data.name, gender: data.gender || 'male', avatar: data.avatar || '', updatedAt: data.updatedAt || null, favorites: data.favorites || [], history: data.history || [] };
+                    const data = await this.api('/api/auth/login', 'POST', { loginId });
+                    state.auth = { loggedIn: true, loginId: data.loginId, name: data.name };
                     state.teleparty.userName = data.name;
                     localStorage.setItem('sp_login_id', data.loginId);
-                    if (fromOverlay || password) localStorage.setItem('sp_login_password', password);
                     if (Array.isArray(data.library) && data.library.length) mockLibrary.splice(0, mockLibrary.length, ...data.library);
                     if (Array.isArray(data.playlist) && data.playlist.length) mockPlaylist.splice(0, mockPlaylist.length, ...data.playlist);
                     ui.renderLibrary(); ui.renderPlaylist();
                     this.applyAuthUi();
-                    this.hideAuthOverlay();
                     ui.showToast(`Logged in as ${data.name}`, 'success');
                 } catch (e) { ui.showToast(e.message, 'error'); }
             },
             logoutAccount() {
-                state.auth = { loggedIn: false, loginId: null, name: 'Guest', gender: 'male', avatar: '', updatedAt: null, favorites: [], history: [] };
+                state.auth = { loggedIn: false, loginId: null, name: 'Guest' };
                 state.teleparty.userName = 'Guest';
                 localStorage.removeItem('sp_login_id');
-                localStorage.removeItem('sp_login_password');
                 this.applyAuthUi();
-                this.showAuthOverlay();
                 ui.showToast('Logged out');
             },
             async saveUserMedia() {
                 if (!state.auth.loggedIn || !state.auth.loginId) return;
                 try {
-                    const res = await this.api(`/api/user-media/${encodeURIComponent(state.auth.loginId)}`, 'PUT', {
+                    await this.api(`/api/user-media/${encodeURIComponent(state.auth.loginId)}`, 'PUT', {
                         name: state.auth.name,
-                        gender: state.auth.gender,
-                        avatar: state.auth.avatar,
-                        lastKnownUpdatedAt: state.auth.updatedAt || '',
                         library: mockLibrary,
-                        playlist: mockPlaylist,
-                        favorites: state.auth.favorites || [],
-                        history: state.auth.history || []
+                        playlist: mockPlaylist
                     });
-                    state.auth.updatedAt = res.updatedAt || state.auth.updatedAt;
-                    this.applyAuthUi();
-                } catch (e) {
-                    if (e.message.includes('Sync conflict')) ui.showToast('Sync conflict detected. Please re-login to refresh latest data.', 'error');
-                }
-            },
-            exportLibrary() {
-                const payload = { library: mockLibrary, playlist: mockPlaylist, favorites: state.auth.favorites || [], history: state.auth.history || [] };
-                const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = `streamerpro-${state.auth.loginId || 'guest'}-backup.json`; a.click();
-                URL.revokeObjectURL(url);
-            },
-            importLibrary(event) {
-                const file = event.target.files?.[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = () => {
-                    try {
-                        const data = JSON.parse(reader.result);
-                        if (Array.isArray(data.library)) mockLibrary.splice(0, mockLibrary.length, ...data.library);
-                        if (Array.isArray(data.playlist)) mockPlaylist.splice(0, mockPlaylist.length, ...data.playlist);
-                        if (Array.isArray(data.favorites)) state.auth.favorites = data.favorites;
-                        if (Array.isArray(data.history)) state.auth.history = data.history;
-                        ui.renderLibrary(); ui.renderPlaylist();
-                        this.renderAccountLists();
-                        this.saveUserMedia();
-                        ui.showToast('Data imported', 'success');
-                    } catch (_) { ui.showToast('Invalid import file', 'error'); }
-                };
-                reader.readAsText(file);
+                } catch (_) {}
             },
             toggleSleepTimer() {
                 if(this.sleepTimer) {
@@ -1586,10 +1441,10 @@
                 const finalThumb = thumbInput || (ytId ? `https://img.youtube.com/vi/${ytId}/maxresdefault.jpg` : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=600&auto=format&fit=crop');
                 if (mediaType === 'video') {
                     mockLibrary.unshift({ id: 'custom-' + Date.now(), type: type, title: title, url: normalizedUrl, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Custom', isCustom: true });
-                    ui.renderLibrary(); logic.saveUserMedia(); ui.closeAllPanels(); (ytId ? engine.loadVideo(normalizedUrl, type, ytId) : engine.playSmart(normalizedUrl)); ui.switchTab('view-video');
+                    ui.renderLibrary(); ui.closeAllPanels(); (ytId ? engine.loadVideo(normalizedUrl, type, ytId) : engine.playSmart(normalizedUrl)); ui.switchTab('view-video');
                 } else {
                     mockPlaylist.unshift({ title: title, artist: ytId ? 'YouTube Audio' : 'Custom Stream', url: normalizedUrl, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Live', isCustom: true, type: type === 'youtube' ? 'youtube' : 'native' });
-                    ui.renderPlaylist(); logic.saveUserMedia(); ui.closeAllPanels(); musicEngine.loadTrack(0); ui.switchTab('view-music');
+                    ui.renderPlaylist(); ui.closeAllPanels(); musicEngine.loadTrack(0); ui.switchTab('view-music');
                 }
                 document.getElementById('add-stream-form').reset();
             },
@@ -1652,27 +1507,11 @@
             ui.renderLibrary(); ui.renderPlaylist(); engine.init(); musicEngine.init(); orbEngine.init(); searchEngine.init();
             ui.switchTab('view-video');
             logic.applyAuthUi();
-            logic.updateOverlayAvatar();
-            ['overlay-name', 'overlay-login-id'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.addEventListener('input', () => logic.updateOverlayAvatar());
-            });
 
             const rememberedLoginId = localStorage.getItem('sp_login_id');
-            const rememberedPassword = localStorage.getItem('sp_login_password');
             if (rememberedLoginId) {
                 document.getElementById('auth-login-input').value = rememberedLoginId;
-                document.getElementById('overlay-login-id').value = rememberedLoginId;
-                if (rememberedPassword) {
-                    document.getElementById('auth-pin-input').value = rememberedPassword;
-                    document.getElementById('overlay-password').value = rememberedPassword;
-                    logic.loginAccount(true);
-                } else {
-                    ui.showToast('Enter password to login', 'success');
-                    logic.showAuthOverlay();
-                }
-            } else {
-                logic.showAuthOverlay();
+                logic.loginAccount();
             }
         });
     </script>
