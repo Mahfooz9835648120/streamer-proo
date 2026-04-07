@@ -106,7 +106,7 @@
         .progress-bar { background: linear-gradient(to right, #fff var(--value, 0%), rgba(255,255,255,0.2) var(--value, 0%)); }
 
         .floating-emoji { position: absolute; pointer-events: none; font-size: 2rem; z-index: 100; }
-        .viewer-restricted { opacity: 0.5; pointer-events: none; filter: grayscale(1); }
+        .viewer-restricted { opacity: 0.5; pointer-events: none !important; filter: grayscale(1); }
         
         #yt-video-container iframe { width: 100% !important; height: 100% !important; pointer-events: none !important; }
         .spin-record { animation: spin 12s linear infinite; }
@@ -143,7 +143,7 @@
 
         <main id="main-content" class="flex-1 relative overflow-hidden flex flex-col scroll-smooth">
             
-            <div class="px-4 py-2 shrink-0 relative z-50 w-full" id="search-container">
+            <div class="px-4 py-2 shrink-0 relative z-50 w-full transition-all duration-300" id="search-container">
                 <div class="glass flex items-center gap-3 px-4 py-3 rounded-2xl text-gray-400 focus-within:border-white/30 transition-colors">
                     <i data-lucide="search" class="w-5 h-5"></i>
                     <input type="text" id="search-input" placeholder="Search YouTube, paste links..." class="bg-transparent border-none outline-none w-full text-white placeholder-gray-500 text-sm" autocomplete="off">
@@ -167,22 +167,25 @@
                             <div class="text-4xl">⚠️</div>
                             <p class="text-white font-bold text-sm">Video Unavailable</p>
                             <p class="text-gray-400 text-xs max-w-xs">This video is restricted by YouTube (Error 153). It may be age-gated or embedding disabled by the creator.</p>
-                            <button onclick="engine.handleError153Fallback()" class="mt-2 px-4 py-2 bg-white text-black text-xs font-bold rounded-full hover:bg-gray-200 transition">
+                            <button onclick="engine.handleError153Fallback()" class="mt-2 px-4 py-2 bg-white text-black text-xs font-bold rounded-full hover:bg-gray-200 transition pointer-events-auto">
                                 Try Another Video
                             </button>
-                            <a id="yt-error-open-link" href="#" target="_blank" rel="noopener noreferrer" class="text-xs text-blue-400 underline hover:text-blue-300">
+                            <a id="yt-error-open-link" href="#" target="_blank" rel="noopener noreferrer" class="text-xs text-blue-400 underline hover:text-blue-300 pointer-events-auto">
                                 Open on YouTube ↗
                             </a>
                         </div>
 
-                        <div id="gesture-layer" class="absolute inset-0 z-10 flex">
-                            <div class="w-1/3 h-full flex items-center justify-center pointer-events-none" id="gesture-left"><div class="bg-black/50 rounded-full p-4 opacity-0 transition-opacity transform scale-75" id="ripple-left"><i data-lucide="chevrons-left" class="w-8 h-8 text-white"></i><span class="text-xs font-bold text-white block text-center mt-1">-10s</span></div></div>
+                        <!-- GESTURE LAYER (Receives Double Taps & Swipes) -->
+                        <div id="gesture-layer" class="absolute inset-0 z-10 flex cursor-pointer pointer-events-auto">
+                            <div class="w-1/3 h-full flex items-center justify-center pointer-events-none" id="gesture-left"><div class="bg-black/50 rounded-full p-4 opacity-0 transition-opacity transform scale-75" id="ripple-left"><i data-lucide="chevrons-left" class="w-8 h-8 text-white"></i></div></div>
                             <div class="w-1/3 h-full"></div>
-                            <div class="w-1/3 h-full flex items-center justify-center pointer-events-none" id="gesture-right"><div class="bg-black/50 rounded-full p-4 opacity-0 transition-opacity transform scale-75" id="ripple-right"><i data-lucide="chevrons-right" class="w-8 h-8 text-white"></i><span class="text-xs font-bold text-white block text-center mt-1">+10s</span></div></div>
+                            <div class="w-1/3 h-full flex items-center justify-center pointer-events-none" id="gesture-right"><div class="bg-black/50 rounded-full p-4 opacity-0 transition-opacity transform scale-75" id="ripple-right"><i data-lucide="chevrons-right" class="w-8 h-8 text-white"></i></div></div>
                         </div>
 
-                        <div id="video-overlay" class="absolute inset-0 z-20 flex flex-col justify-between p-4 bg-gradient-to-t from-black/90 via-black/20 to-black/60 transition-opacity duration-300">
-                            <div class="flex justify-between items-start">
+                        <!-- VIDEO UI OVERLAY (Passes pointer events through, except for buttons) -->
+                        <div id="video-overlay" class="absolute inset-0 z-20 flex flex-col justify-between p-4 bg-gradient-to-t from-black/90 via-black/20 to-black/60 transition-opacity duration-300 pointer-events-none">
+                            
+                            <div class="flex justify-between items-start pointer-events-auto w-full">
                                 <div class="flex flex-col gap-2">
                                     <div class="glass px-3 py-1.5 rounded-lg text-xs font-medium tracking-wide w-max"><span id="video-status-text" class="text-white/80 animate-pulse">Connecting...</span></div>
                                     <div id="host-badge" class="bg-green-500/20 text-green-400 border border-green-500/30 px-3 py-1 rounded-lg text-xs font-medium tracking-wide hidden w-max flex items-center gap-1.5"><i data-lucide="crown" class="w-3 h-3"></i> Host Controlled</div>
@@ -190,13 +193,13 @@
                                 <button id="btn-fullscreen" class="glass p-2 rounded-full hover:bg-white/10 transition"><span id="icon-fs-enter"><i data-lucide="maximize" class="w-4 h-4"></i></span><span id="icon-fs-exit" class="hidden"><i data-lucide="minimize" class="w-4 h-4"></i></span></button>
                             </div>
 
-                            <div class="flex items-center justify-center gap-8 host-controlled-ui">
+                            <div class="flex items-center justify-center gap-8 host-controlled-ui pointer-events-auto w-max mx-auto">
                                 <button id="btn-rewind" class="p-3 rounded-full hover:bg-white/10 transition text-white/80 hover:text-white transform active:scale-90"><i data-lucide="rotate-ccw" class="w-6 h-6"></i></button>
                                 <button id="btn-play-pause" class="p-4 rounded-full bg-white text-black hover:scale-105 transition shadow-[0_0_20px_rgba(255,255,255,0.3)]"><span id="icon-play"><i data-lucide="play" class="w-8 h-8 ml-1"></i></span><span id="icon-pause" class="hidden"><i data-lucide="pause" class="w-8 h-8"></i></span></button>
                                 <button id="btn-forward" class="p-3 rounded-full hover:bg-white/10 transition text-white/80 hover:text-white transform active:scale-90"><i data-lucide="rotate-cw" class="w-6 h-6"></i></button>
                             </div>
 
-                            <div class="space-y-2">
+                            <div class="space-y-2 pointer-events-auto w-full">
                                 <div class="flex items-center gap-3 text-xs font-medium text-gray-300">
                                     <span id="time-current" class="w-10 text-right">0:00</span>
                                     <div class="flex-1 relative h-2 bg-white/20 rounded-full group-hover:h-3 transition-all cursor-pointer host-controlled-ui" id="progress-container">
@@ -231,7 +234,7 @@
                     <div class="glass px-3 py-1 rounded-full text-[10px] font-bold tracking-wider text-gray-400 whitespace-nowrap uppercase" id="buffer-health">Buffer: Good</div>
                 </div>
 
-                <div class="px-4 mt-2 flex-1">
+                <div id="library-wrap" class="px-4 mt-2 flex-1 transition-all duration-300">
                     <div class="flex items-center justify-between mb-4">
                         <h2 class="text-sm font-bold tracking-widest text-gray-300">LIBRARY</h2>
                     </div>
@@ -291,7 +294,7 @@
                     </div>
                 </div>
 
-                <div class="w-full px-4 flex-1 z-10 bg-gradient-to-t from-black via-black/80 to-transparent pt-4 border-t border-white/10">
+                <div id="music-playlist-wrap" class="w-full px-4 flex-1 z-10 bg-gradient-to-t from-black via-black/80 to-transparent pt-4 border-t border-white/10 transition-all duration-300">
                     <h3 class="text-[10px] font-bold tracking-widest text-gray-400 mb-4 px-2 uppercase">Playlist</h3>
                     <div class="space-y-2" id="music-playlist"></div>
                 </div>
@@ -674,19 +677,20 @@
                 else this.v.pause();
             },
             seek(amount) { 
-                if(this.isRestricted()) return;
+                if(this.isRestricted()) return false;
                 let newTime;
                 if(state.video.type === 'youtube') {
-                    if(!this.ytPlayer || !isFinite(this.ytPlayer.getDuration())) return;
+                    if(!this.ytPlayer || !isFinite(this.ytPlayer.getDuration())) return false;
                     newTime = this.ytPlayer.getCurrentTime() + amount;
                     this.ytPlayer.seekTo(newTime);
                 } else {
-                    if(!isFinite(this.v.duration)) return;
+                    if(!isFinite(this.v.duration)) return false;
                     this.v.currentTime += amount; 
                     newTime = this.v.currentTime;
                 }
                 ui.showToast(`Seeked ${amount>0?'+':''}${amount}s`);
                 logic.emitSync('seek', { time: newTime });
+                return true;
             },
             forceSeek(time) {
                 if(!isFinite(time)) return;
@@ -755,13 +759,61 @@
             },
 
             setupGestures() {
-                const layer = document.getElementById('gesture-layer'); let lastTap = 0, startX = 0;
+                const layer = document.getElementById('gesture-layer'); 
+                let lastTap = 0; 
+                let tapTimer = null;
+                let startX = 0;
+                let startY = 0;
+                let isSwiping = false;
+
                 layer.addEventListener('click', (e) => {
-                    if(new Date().getTime() - lastTap < 300) { e.clientX > layer.getBoundingClientRect().left + layer.getBoundingClientRect().width/2 ? (this.seek(10), this.showRipple('right')) : (this.seek(-10), this.showRipple('left')); } 
-                    else { state.ui.controlsVisible ? this.hideControls() : this.showControls(); } lastTap = new Date().getTime();
+                    const now = new Date().getTime();
+                    const timeDiff = now - lastTap;
+                    lastTap = now;
+
+                    if(timeDiff < 300) {
+                        // Double Tap - Seek
+                        clearTimeout(tapTimer);
+                        if (e.clientX > layer.getBoundingClientRect().left + layer.getBoundingClientRect().width / 2) {
+                            if (this.seek(10)) this.showRipple('right');
+                        } else {
+                            if (this.seek(-10)) this.showRipple('left');
+                        }
+                    } else {
+                        // Single Tap - Toggle controls
+                        tapTimer = setTimeout(() => {
+                            state.ui.controlsVisible ? this.hideControls() : this.showControls();
+                        }, 300);
+                    }
                 });
-                layer.addEventListener('touchstart', e => { startX = e.changedTouches[0].screenX; }, {passive: true});
-                layer.addEventListener('touchend', e => { if(Math.abs(e.changedTouches[0].screenX - startX) > 50 && !this.isRestricted()) e.changedTouches[0].screenX - startX > 0 ? this.seek(15) : this.seek(-15); }, {passive: true});
+
+                layer.addEventListener('touchstart', e => { 
+                    startX = e.changedTouches[0].screenX; 
+                    startY = e.changedTouches[0].screenY;
+                    isSwiping = false;
+                }, {passive: true});
+
+                layer.addEventListener('touchmove', e => {
+                    if (!startX || isSwiping) return;
+                    const diffX = e.changedTouches[0].screenX - startX;
+                    const diffY = e.changedTouches[0].screenY - startY;
+
+                    // Trigger if horizontally swiped more than 60px
+                    if (Math.abs(diffX) > 60 && Math.abs(diffX) > Math.abs(diffY) && !this.isRestricted()) {
+                        if (diffX > 0) {
+                            if(this.seek(15)) this.showRipple('right');
+                        } else {
+                            if(this.seek(-15)) this.showRipple('left');
+                        }
+                        isSwiping = true;
+                        startX = 0;
+                    }
+                }, {passive: true});
+
+                layer.addEventListener('touchend', e => { 
+                    startX = 0;
+                }, {passive: true});
+
                 layer.addEventListener('mousemove', () => this.showControls());
             },
             showRipple(side) {
@@ -773,6 +825,11 @@
             resetHideTimer() { clearTimeout(state.ui.controlsTimeout); if(state.video.isPlaying) state.ui.controlsTimeout = setTimeout(() => this.hideControls(), 3000); },
             
             loadVideo(url, type, ytId, isSync = false) {
+                if (!isSync && this.isRestricted()) {
+                    ui.showToast('Viewers cannot change the video.', 'error');
+                    return;
+                }
+
                 ytHelper.hideEmbedError();
                 document.getElementById('video-loader').classList.remove('hidden'); document.getElementById('video-status-text').textContent = "Buffering...";
                 
@@ -903,6 +960,10 @@
             isRestricted() { if (state.teleparty.inRoom && state.teleparty.role === 'viewer') { ui.showToast('Host is controlling playback', 'error'); return true; } return false; },
 
             loadTrack(idx, auto=true) {
+                if (!auto && this.isRestricted()) {
+                    ui.showToast('Viewers cannot change the music.', 'error');
+                    return;
+                }
                 if(mockPlaylist.length === 0) return;
                 if(this.a) { this.a.pause(); this.a.currentTime = 0; }
                 if(this.ytPlayer && this.ytPlayer.pauseVideo) this.ytPlayer.pauseVideo();
@@ -1068,10 +1129,20 @@
                     badge.textContent = "HOST"; badge.className = "px-2 py-1 rounded text-xs font-bold border border-green-500/50 text-green-400 bg-green-500/10";
                     document.getElementById('host-badge').classList.add('hidden'); 
                     document.querySelectorAll('.host-controlled-ui').forEach(el => el.classList.remove('viewer-restricted'));
+                    
+                    // Un-restrict the Library for host
+                    document.getElementById('library-wrap').classList.remove('opacity-50', 'pointer-events-none', 'grayscale');
+                    document.getElementById('search-container').classList.remove('opacity-50', 'pointer-events-none');
+                    document.getElementById('music-playlist-wrap').classList.remove('opacity-50', 'pointer-events-none', 'grayscale');
                 } else {
                     badge.textContent = "VIEWER"; badge.className = "px-2 py-1 rounded text-xs font-bold border border-gray-500/50 text-gray-400 bg-gray-500/10";
                     document.getElementById('host-badge').classList.remove('hidden'); 
                     document.querySelectorAll('.host-controlled-ui').forEach(el => el.classList.add('viewer-restricted'));
+
+                    // Lock the Library & Search for viewers so they cannot change the video
+                    document.getElementById('library-wrap').classList.add('opacity-50', 'pointer-events-none', 'grayscale');
+                    document.getElementById('search-container').classList.add('opacity-50', 'pointer-events-none');
+                    document.getElementById('music-playlist-wrap').classList.add('opacity-50', 'pointer-events-none', 'grayscale');
                 }
                 
                 ui.showToast(`Joined room as ${role}`, 'success');
@@ -1100,6 +1171,11 @@
                 document.getElementById('host-badge').classList.add('hidden');
                 document.querySelectorAll('.host-controlled-ui').forEach(el => el.classList.remove('viewer-restricted'));
                 
+                // Unlock library
+                document.getElementById('library-wrap').classList.remove('opacity-50', 'pointer-events-none', 'grayscale');
+                document.getElementById('search-container').classList.remove('opacity-50', 'pointer-events-none');
+                document.getElementById('music-playlist-wrap').classList.remove('opacity-50', 'pointer-events-none', 'grayscale');
+
                 state.teleparty.inRoom = false; state.teleparty.roomId = null; state.teleparty.role = null;
                 document.getElementById('chat-messages').innerHTML = ''; ui.showToast('Disconnected from room');
             },
