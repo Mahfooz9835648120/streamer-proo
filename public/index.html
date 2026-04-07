@@ -632,16 +632,7 @@
                 this.resultsContainer.classList.remove('hidden'); lucide.createIcons();
 
                 let results = [];
-                try {
-                    const res = await fetch(`/api/search-youtube?q=${encodeURIComponent(query)}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        results = Array.isArray(data?.items) ? data.items : [];
-                    }
-                } catch (_e) {}
-
                 for (const provider of this.providers) {
-                    if (results.length > 0) break;
                     try {
                         results = provider.type === 'piped'
                             ? await this.fetchPiped(provider.base, query)
@@ -1418,10 +1409,10 @@
                 const finalThumb = thumbInput || (ytId ? `https://img.youtube.com/vi/${ytId}/maxresdefault.jpg` : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=600&auto=format&fit=crop');
                 if (mediaType === 'video') {
                     mockLibrary.unshift({ id: 'custom-' + Date.now(), type: type, title: title, url: normalizedUrl, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Custom', isCustom: true });
-                    ui.renderLibrary(); logic.saveUserMedia(); ui.closeAllPanels(); (ytId ? engine.loadVideo(normalizedUrl, type, ytId) : engine.playSmart(normalizedUrl)); ui.switchTab('view-video');
+                    ui.renderLibrary(); ui.closeAllPanels(); (ytId ? engine.loadVideo(normalizedUrl, type, ytId) : engine.playSmart(normalizedUrl)); ui.switchTab('view-video');
                 } else {
                     mockPlaylist.unshift({ title: title, artist: ytId ? 'YouTube Audio' : 'Custom Stream', url: normalizedUrl, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Live', isCustom: true, type: type === 'youtube' ? 'youtube' : 'native' });
-                    ui.renderPlaylist(); logic.saveUserMedia(); ui.closeAllPanels(); musicEngine.loadTrack(0); ui.switchTab('view-music');
+                    ui.renderPlaylist(); ui.closeAllPanels(); musicEngine.loadTrack(0); ui.switchTab('view-music');
                 }
                 document.getElementById('add-stream-form').reset();
             },
