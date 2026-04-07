@@ -205,12 +205,12 @@
                                 </div>
                                 <div class="flex items-center justify-between text-sm relative">
                                     <div id="quality-menu" class="absolute bottom-10 left-0 glass-panel rounded-xl py-2 hidden flex-col gap-1 z-30 min-w-[100px] border border-white/10">
-                                        <button class="text-xs px-4 py-2 hover:bg-white/10 text-left w-full text-white font-bold" data-val="-1">Auto</button>
-                                        <button class="text-xs px-4 py-2 hover:bg-white/10 text-left w-full text-gray-300" data-val="1080">1080p</button>
-                                        <button class="text-xs px-4 py-2 hover:bg-white/10 text-left w-full text-gray-300" data-val="720">720p</button>
+                                        <button class="text-xs px-4 py-2 hover:bg-white/10 text-left w-full text-white font-bold" onclick="engine.setQuality('-1')">Auto</button>
+                                        <button class="text-xs px-4 py-2 hover:bg-white/10 text-left w-full text-gray-300" onclick="engine.setQuality('1080')">1080p</button>
+                                        <button class="text-xs px-4 py-2 hover:bg-white/10 text-left w-full text-gray-300" onclick="engine.setQuality('720')">720p</button>
                                     </div>
                                     <div class="flex gap-2">
-                                        <button id="btn-quality" class="px-2 py-1 rounded hover:bg-white/10 text-[10px] font-bold tracking-wider text-gray-400 transition-colors flex items-center gap-1"><span id="quality-badge">AUTO</span> <i data-lucide="chevron-up" class="w-3 h-3"></i></button>
+                                        <button id="btn-quality" class="px-2 py-1 rounded hover:bg-white/10 text-[10px] font-bold tracking-wider text-gray-400 transition-colors flex items-center gap-1" onclick="ui.toggleQualityMenu()"><span id="quality-badge">AUTO</span> <i data-lucide="chevron-up" class="w-3 h-3"></i></button>
                                     </div>
                                     <div class="flex items-center gap-3">
                                         <button id="btn-mute" class="text-gray-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10"><span id="icon-vol-up"><i data-lucide="volume-2" class="w-5 h-5"></i></span><span id="icon-vol-mute" class="hidden text-red-400"><i data-lucide="volume-x" class="w-5 h-5"></i></span></button>
@@ -349,11 +349,11 @@
 
         <!-- Watch Together Panel -->
         <aside id="watch-together-panel" class="fixed top-0 right-0 h-full w-full max-w-sm glass-panel z-50 transform translate-x-full transition-transform duration-400 flex flex-col">
-            <div class="p-6 border-b border-border flex items-center justify-between">
+            <div class="p-6 border-b border-border flex items-center justify-between shrink-0">
                 <h2 class="text-sm font-bold tracking-widest flex items-center gap-2"><i data-lucide="users" class="w-4 h-4"></i> TELEPARTY</h2>
                 <button onclick="ui.closeAllPanels()" class="p-2 hover:bg-white/10 rounded-full"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
-            <div class="p-6 flex-1 flex flex-col gap-6 relative">
+            <div class="p-6 flex-1 flex flex-col gap-6 relative min-h-0">
                 <div id="tp-setup" class="flex flex-col gap-6">
                     <p class="text-sm text-gray-400 text-center">Sync playback perfectly with friends. Hosts control the video, viewers follow along.</p>
                     <input type="text" id="tp-user-name" placeholder="Your Name" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30 text-center font-medium shadow-inner">
@@ -364,34 +364,66 @@
                         <button onclick="logic.joinRoom()" class="w-full border border-white/20 text-white font-semibold py-3 rounded-xl hover:bg-white/5 transition-colors">Join as Viewer</button>
                     </div>
                 </div>
-                <div id="tp-active" class="hidden flex-col h-full gap-4">
-                    <div class="bg-black/30 border border-white/10 px-4 py-3 rounded-xl flex items-center justify-between">
+                <div id="tp-active" class="hidden flex-col h-full gap-4 min-h-0">
+                    <div class="bg-black/30 border border-white/10 px-4 py-3 rounded-xl flex items-center justify-between shrink-0">
                         <div>
                             <p class="text-[10px] text-gray-500 font-bold tracking-widest mb-1">ROOM ID</p>
                             <div class="flex items-center gap-2"><p id="tp-display-id" class="font-mono font-bold text-white text-lg tracking-wider"></p><button onclick="logic.copyRoomId()" class="text-gray-400 hover:text-white transition"><i data-lucide="copy" class="w-4 h-4"></i></button></div>
                         </div>
                         <div id="tp-role-badge" class="px-2 py-1 rounded text-xs font-bold border"></div>
                     </div>
-                    <div class="flex-1 bg-black/40 rounded-xl border border-white/5 flex flex-col overflow-hidden relative">
-                        <div class="p-3 border-b border-white/5 text-[10px] font-bold text-gray-500 tracking-wider flex justify-between"><span>LIVE CHAT</span><span class="text-green-400 flex items-center gap-1"><div class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div> Sync Active</span></div>
-                        <div id="chat-messages" class="flex-1 p-3 overflow-y-auto space-y-3 flex flex-col"><div class="text-center text-xs text-gray-500 my-2">Welcome!</div></div>
-                        <div class="p-2 border-t border-white/5 flex gap-2 justify-around bg-black/50">
+                    <div class="flex-1 bg-black/40 rounded-xl border border-white/5 flex flex-col overflow-hidden relative min-h-0">
+                        <div class="p-3 border-b border-white/5 text-[10px] font-bold text-gray-500 tracking-wider flex justify-between shrink-0"><span>LIVE CHAT</span><span class="text-green-400 flex items-center gap-1"><div class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div> Sync Active</span></div>
+                        <div id="chat-messages" class="flex-1 p-3 overflow-y-auto space-y-3 flex flex-col min-h-0"><div class="text-center text-xs text-gray-500 my-2">Welcome!</div></div>
+                        <div class="p-2 border-t border-white/5 flex gap-2 justify-around bg-black/50 shrink-0">
                             <button class="text-xl hover:scale-125 transition-transform" onclick="logic.sendEmoji('🔥')">🔥</button><button class="text-xl hover:scale-125 transition-transform" onclick="logic.sendEmoji('😂')">😂</button>
                             <button class="text-xl hover:scale-125 transition-transform" onclick="logic.sendEmoji('❤️')">❤️</button><button class="text-xl hover:scale-125 transition-transform" onclick="logic.sendEmoji('👀')">👀</button>
                         </div>
-                        <div class="p-2 bg-black/60 flex gap-2">
+                        <div class="p-2 bg-black/60 flex gap-2 shrink-0">
                             <input type="text" id="chat-input" placeholder="Say something..." class="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none" onkeypress="if(event.key === 'Enter') logic.sendChat()">
                             <button class="bg-white text-black p-2 rounded-lg hover:bg-gray-200 transition" onclick="logic.sendChat()"><i data-lucide="send" class="w-4 h-4"></i></button>
                         </div>
                     </div>
-                    <button onclick="logic.leaveRoom()" class="w-full bg-red-500/10 text-red-400 border border-red-500/20 font-semibold py-3 rounded-xl hover:bg-red-500/20 transition-colors text-sm">Disconnect</button>
+                    <button onclick="logic.leaveRoom()" class="w-full shrink-0 bg-red-500/10 text-red-400 border border-red-500/20 font-semibold py-3 rounded-xl hover:bg-red-500/20 transition-colors text-sm">Disconnect</button>
                 </div>
             </div>
         </aside>
     </div>
 
-    <script>
+    <!-- Convert script to module to support Firebase Sync -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, arrayUnion, onSnapshot } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+
         lucide.createIcons();
+
+        let db = null, auth = null, currentUser = null, appId = 'default-app-id';
+        let unsubRoom = null;
+
+        // ==========================================
+        // FIREBASE SETUP FOR ROOM SYNC
+        // ==========================================
+        const initFirebase = async () => {
+            try {
+                if (typeof __firebase_config === 'undefined') return;
+                const firebaseConfig = JSON.parse(__firebase_config);
+                appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                
+                onAuthStateChanged(auth, user => { currentUser = user; });
+            } catch (e) { console.error('Firebase init error', e); }
+        };
+        initFirebase();
 
         // ==========================================
         // YOUTUBE API QUEUE & ERROR 153 FIX
@@ -406,16 +438,8 @@
                 const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
                 const match = url.match(regExp); return (match && match[2].length === 11) ? match[2] : null;
             },
-
-            // =============================================
-            // ERROR 153 FIX: Try Piped embed as fallback
-            // =============================================
-            // Error 153 = video not allowed to be embedded
-            // Strategy: show error overlay with "Open on YouTube" link
-            // + optionally attempt a Piped/Invidious proxy embed
             handleError(code, ytId, onFallback) {
                 if (code === 150 || code === 101 || code === 5) {
-                    // Error 150/101/5 are all variants of Error 153 (embedding disabled)
                     this.showEmbedError(ytId);
                     if (onFallback) onFallback();
                 } else if (code === 2) {
@@ -440,7 +464,91 @@
         ytHelper.init();
 
         // ==========================================
-        // SEARCH ENGINE (PIPED API)
+        // STATE & DATA
+        // ==========================================
+        const state = {
+            activeView: 'view-video',
+            video: { isPlaying: false, isMuted: false, quality: 'auto', hls: null, type: 'native', currentYtId: null, currentUrl: null },
+            music: { isPlaying: false, currentTrackIndex: 0, audioContext: null, analyser: null, dataArray: null, type: 'native' },
+            teleparty: { inRoom: false, roomId: null, role: null, userName: 'Guest', lastMessageCount: 0 },
+            ui: { controlsVisible: true, controlsTimeout: null }
+        };
+
+        const mockLibrary = [
+            { id: 'v0', type: 'youtube', title: 'Lofi Girl - beats to relax/study to', url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk', thumb: 'https://img.youtube.com/vi/jfKfPfyJRdk/maxresdefault.jpg', duration: 'Live', isCustom: false, ytId: 'jfKfPfyJRdk' },
+            { id: 'v1', type: 'hls', title: 'Big Buck Bunny (HLS)', url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8', thumb: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Big_buck_bunny_poster_big.jpg/640px-Big_buck_bunny_poster_big.jpg', duration: '10:34', isCustom: false },
+        ];
+
+        const mockPlaylist = [
+            { title: 'Synthwave Radio', artist: 'Nightride FM', url: 'https://www.youtube.com/watch?v=UedTcufyrHc', duration: 'Live', thumb: 'https://img.youtube.com/vi/UedTcufyrHc/maxresdefault.jpg', isCustom: false, type: 'youtube', ytId: 'UedTcufyrHc' },
+            { title: 'Canon in D', artist: 'Classical Essentials', url: 'https://upload.wikimedia.org/wikipedia/commons/b/be/Pachelbel_-_Canon_in_D_major.ogg', duration: '6:12', thumb: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?auto=format&fit=crop&w=400&q=80', isCustom: false, type: 'native' }
+        ];
+
+        // ==========================================
+        // UI CORE
+        // ==========================================
+        const ui = {
+            formatTime: (sec) => {
+                if (isNaN(sec) || !isFinite(sec)) return "Live";
+                const m = Math.floor(sec / 60); const s = Math.floor(sec % 60); return `${m}:${s.toString().padStart(2, '0')}`;
+            },
+            showToast: (msg, type = 'info') => {
+                const c = document.getElementById('toast-container'); const t = document.createElement('div');
+                const colors = type === 'error' ? 'bg-red-500/90 text-white' : type === 'success' ? 'bg-green-500/90 text-white' : 'bg-black/80 text-white border border-white/20';
+                t.className = `px-4 py-2 rounded-full text-xs font-medium shadow-xl backdrop-blur-md animate-pop-in ${colors}`;
+                t.textContent = msg; c.appendChild(t);
+                setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateY(-10px) scale(0.9)'; setTimeout(() => t.remove(), 300); }, 3000);
+            },
+            switchTab(targetId) {
+                state.activeView = targetId; document.querySelectorAll('section').forEach(v => { v.classList.add('hidden'); v.classList.remove('flex'); });
+                const target = document.getElementById(targetId); target.classList.remove('hidden'); target.classList.add('flex');
+                document.querySelectorAll('.nav-btn').forEach(btn => { btn.dataset.target === targetId ? btn.classList.add('active') : btn.classList.remove('active'); });
+            },
+            togglePanel(panelId) {
+                const panel = document.getElementById(panelId); const isOpening = panel.classList.contains('translate-x-full'); this.closeAllPanels();
+                if (isOpening) { const backdrop = document.getElementById('panel-backdrop'); backdrop.classList.remove('hidden'); setTimeout(() => backdrop.classList.remove('opacity-0'), 10); panel.classList.remove('translate-x-full'); }
+            },
+            closeAllPanels() {
+                const backdrop = document.getElementById('panel-backdrop'); backdrop.classList.add('opacity-0'); setTimeout(() => backdrop.classList.add('hidden'), 300);
+                document.getElementById('admin-panel').classList.add('translate-x-full'); document.getElementById('watch-together-panel').classList.add('translate-x-full');
+            },
+            toggleQualityMenu() {
+                document.getElementById('quality-menu').classList.toggle('hidden');
+            },
+            renderLibrary() {
+                document.getElementById('video-library-grid').innerHTML = mockLibrary.map(vid => `
+                    <div class="group relative rounded-xl overflow-hidden glass cursor-pointer hover:border-white/30 transition-colors" onclick="engine.loadVideo('${vid.url}', '${vid.type}', '${vid.ytId}')">
+                        <div class="aspect-video relative">
+                            <img src="${vid.thumb}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="Thumb">
+                            <div class="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors"></div>
+                            ${vid.isCustom ? `<button onclick="event.stopPropagation(); logic.removeVideo('${vid.id}')" class="absolute top-2 left-2 z-20 p-1.5 bg-black/60 backdrop-blur rounded-md text-gray-300 hover:bg-red-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100"><i data-lucide="trash-2" class="w-3 h-3"></i></button>` : ''}
+                            <span class="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-md text-[9px] font-bold tracking-wider text-white uppercase">${vid.type}</span>
+                        </div>
+                        <div class="p-3"><h3 class="text-xs font-semibold truncate text-white">${vid.title}</h3><p class="text-[10px] text-gray-500 mt-1">${vid.duration}</p></div>
+                    </div>`).join('');
+                lucide.createIcons();
+            },
+            renderPlaylist() {
+                document.getElementById('music-playlist').innerHTML = mockPlaylist.map((track, idx) => `
+                    <div class="glass p-3 rounded-xl flex items-center gap-3 cursor-pointer hover:bg-white/10 transition group ${idx === state.music.currentTrackIndex ? 'border-white/30 bg-white/5' : ''}" onclick="musicEngine.loadTrack(${idx})">
+                        <div class="w-10 h-10 rounded-lg bg-surfaceLight flex flex-shrink-0 items-center justify-center relative overflow-hidden">
+                            ${track.thumb ? `<img src="${track.thumb}" class="absolute inset-0 w-full h-full object-cover opacity-60">` : ''}
+                            <div class="z-10 relative flex items-center justify-center w-full h-full">
+                                ${idx === state.music.currentTrackIndex && state.music.isPlaying 
+                                    ? `<div class="flex items-end gap-0.5 h-4"><div class="w-1 bg-white animate-eq-bounce rounded-t" style="animation-delay: 0s;"></div><div class="w-1 bg-white animate-eq-bounce rounded-t" style="animation-delay: 0.2s;"></div><div class="w-1 bg-white animate-eq-bounce rounded-t" style="animation-delay: 0.4s;"></div></div>` 
+                                    : `<i data-lucide="${idx === state.music.currentTrackIndex ? 'music' : 'play'}" class="w-4 h-4 ${track.thumb ? 'text-white' : 'text-gray-400'} group-hover:text-white transition drop-shadow-md"></i>`
+                                }
+                            </div>
+                        </div>
+                        <div class="flex-1 min-w-0"><h4 class="text-sm font-semibold text-white truncate">${track.title}</h4><p class="text-xs text-gray-400 truncate">${track.artist}</p></div>
+                        ${track.isCustom ? `<button onclick="event.stopPropagation(); logic.removeTrack(${idx})" class="p-2 text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 z-20"><i data-lucide="x" class="w-4 h-4"></i></button>` : ''}
+                    </div>`).join('');
+                lucide.createIcons();
+            }
+        };
+
+        // ==========================================
+        // SEARCH ENGINE
         // ==========================================
         const searchEngine = {
             input: document.getElementById('search-input'), resultsContainer: document.getElementById('search-results'), timeout: null,
@@ -459,13 +567,7 @@
                 this.resultsContainer.innerHTML = `<div class="p-4 text-center text-xs text-gray-400"><i data-lucide="loader-2" class="w-5 h-5 animate-spin mx-auto mb-2"></i> Searching YouTube...</div>`;
                 this.resultsContainer.classList.remove('hidden'); lucide.createIcons();
 
-                // Try multiple Piped instances for reliability
-                const pipedInstances = [
-                    'https://pipedapi.kavin.rocks',
-                    'https://api.piped.projectsegfau.lt',
-                    'https://piped-api.garudalinux.org'
-                ];
-
+                const pipedInstances = ['https://pipedapi.kavin.rocks', 'https://api.piped.projectsegfau.lt'];
                 let data = null;
                 for (const instance of pipedInstances) {
                     try {
@@ -508,88 +610,7 @@
         };
 
         // ==========================================
-        // STATE & DATA
-        // ==========================================
-        const state = {
-            activeView: 'view-video',
-            video: { isPlaying: false, isMuted: false, quality: 'auto', hls: null, type: 'native', currentYtId: null },
-            music: { isPlaying: false, currentTrackIndex: 0, audioContext: null, analyser: null, dataArray: null, type: 'native' },
-            teleparty: { inRoom: false, roomId: null, role: null, userName: 'Guest' },
-            ui: { controlsVisible: true, controlsTimeout: null }
-        };
-
-        const mockLibrary = [
-            { id: 'v0', type: 'youtube', title: 'Lofi Girl - beats to relax/study to', url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk', thumb: 'https://img.youtube.com/vi/jfKfPfyJRdk/maxresdefault.jpg', duration: 'Live', isCustom: false, ytId: 'jfKfPfyJRdk' },
-            { id: 'v1', type: 'hls', title: 'Big Buck Bunny (HLS)', url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8', thumb: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Big_buck_bunny_poster_big.jpg/640px-Big_buck_bunny_poster_big.jpg', duration: '10:34', isCustom: false },
-        ];
-
-        const mockPlaylist = [
-            { title: 'Synthwave Radio', artist: 'Nightride FM', url: 'https://www.youtube.com/watch?v=UedTcufyrHc', duration: 'Live', thumb: 'https://img.youtube.com/vi/UedTcufyrHc/maxresdefault.jpg', isCustom: false, type: 'youtube', ytId: 'UedTcufyrHc' },
-            { title: 'Canon in D', artist: 'Classical Essentials', url: 'https://upload.wikimedia.org/wikipedia/commons/b/be/Pachelbel_-_Canon_in_D_major.ogg', duration: '6:12', thumb: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?auto=format&fit=crop&w=400&q=80', isCustom: false, type: 'native' }
-        ];
-
-        // ==========================================
-        // UI CORE
-        // ==========================================
-        const ui = {
-            formatTime: (sec) => {
-                if (isNaN(sec) || !isFinite(sec)) return "Live";
-                const m = Math.floor(sec / 60); const s = Math.floor(sec % 60); return `${m}:${s.toString().padStart(2, '0')}`;
-            },
-            showToast: (msg, type = 'info') => {
-                const c = document.getElementById('toast-container'); const t = document.createElement('div');
-                const colors = type === 'error' ? 'bg-red-500/90 text-white' : type === 'success' ? 'bg-green-500/90 text-white' : 'bg-black/80 text-white border border-white/20';
-                t.className = `px-4 py-2 rounded-full text-xs font-medium shadow-xl backdrop-blur-md animate-pop-in ${colors}`;
-                t.textContent = msg; c.appendChild(t);
-                setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateY(-10px) scale(0.9)'; setTimeout(() => t.remove(), 300); }, 3000);
-            },
-            switchTab(targetId) {
-                state.activeView = targetId; document.querySelectorAll('section').forEach(v => { v.classList.add('hidden'); v.classList.remove('flex'); });
-                const target = document.getElementById(targetId); target.classList.remove('hidden'); target.classList.add('flex');
-                document.querySelectorAll('.nav-btn').forEach(btn => { btn.dataset.target === targetId ? btn.classList.add('active') : btn.classList.remove('active'); });
-            },
-            togglePanel(panelId) {
-                const panel = document.getElementById(panelId); const isOpening = panel.classList.contains('translate-x-full'); this.closeAllPanels();
-                if (isOpening) { const backdrop = document.getElementById('panel-backdrop'); backdrop.classList.remove('hidden'); setTimeout(() => backdrop.classList.remove('opacity-0'), 10); panel.classList.remove('translate-x-full'); }
-            },
-            closeAllPanels() {
-                const backdrop = document.getElementById('panel-backdrop'); backdrop.classList.add('opacity-0'); setTimeout(() => backdrop.classList.add('hidden'), 300);
-                document.getElementById('admin-panel').classList.add('translate-x-full'); document.getElementById('watch-together-panel').classList.add('translate-x-full');
-            },
-            renderLibrary() {
-                document.getElementById('video-library-grid').innerHTML = mockLibrary.map(vid => `
-                    <div class="group relative rounded-xl overflow-hidden glass cursor-pointer hover:border-white/30 transition-colors" onclick="engine.loadVideo('${vid.url}', '${vid.type}', '${vid.ytId}')">
-                        <div class="aspect-video relative">
-                            <img src="${vid.thumb}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="Thumb">
-                            <div class="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors"></div>
-                            ${vid.isCustom ? `<button onclick="event.stopPropagation(); logic.removeVideo('${vid.id}')" class="absolute top-2 left-2 z-20 p-1.5 bg-black/60 backdrop-blur rounded-md text-gray-300 hover:bg-red-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100"><i data-lucide="trash-2" class="w-3 h-3"></i></button>` : ''}
-                            <span class="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-md text-[9px] font-bold tracking-wider text-white uppercase">${vid.type}</span>
-                        </div>
-                        <div class="p-3"><h3 class="text-xs font-semibold truncate text-white">${vid.title}</h3><p class="text-[10px] text-gray-500 mt-1">${vid.duration}</p></div>
-                    </div>`).join('');
-                lucide.createIcons();
-            },
-            renderPlaylist() {
-                document.getElementById('music-playlist').innerHTML = mockPlaylist.map((track, idx) => `
-                    <div class="glass p-3 rounded-xl flex items-center gap-3 cursor-pointer hover:bg-white/10 transition group ${idx === state.music.currentTrackIndex ? 'border-white/30 bg-white/5' : ''}" onclick="musicEngine.loadTrack(${idx})">
-                        <div class="w-10 h-10 rounded-lg bg-surfaceLight flex flex-shrink-0 items-center justify-center relative overflow-hidden">
-                            ${track.thumb ? `<img src="${track.thumb}" class="absolute inset-0 w-full h-full object-cover opacity-60">` : ''}
-                            <div class="z-10 relative flex items-center justify-center w-full h-full">
-                                ${idx === state.music.currentTrackIndex && state.music.isPlaying 
-                                    ? `<div class="flex items-end gap-0.5 h-4"><div class="w-1 bg-white animate-eq-bounce rounded-t" style="animation-delay: 0s;"></div><div class="w-1 bg-white animate-eq-bounce rounded-t" style="animation-delay: 0.2s;"></div><div class="w-1 bg-white animate-eq-bounce rounded-t" style="animation-delay: 0.4s;"></div></div>` 
-                                    : `<i data-lucide="${idx === state.music.currentTrackIndex ? 'music' : 'play'}" class="w-4 h-4 ${track.thumb ? 'text-white' : 'text-gray-400'} group-hover:text-white transition drop-shadow-md"></i>`
-                                }
-                            </div>
-                        </div>
-                        <div class="flex-1 min-w-0"><h4 class="text-sm font-semibold text-white truncate">${track.title}</h4><p class="text-xs text-gray-400 truncate">${track.artist}</p></div>
-                        ${track.isCustom ? `<button onclick="event.stopPropagation(); logic.removeTrack(${idx})" class="p-2 text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 z-20"><i data-lucide="x" class="w-4 h-4"></i></button>` : ''}
-                    </div>`).join('');
-                lucide.createIcons();
-            }
-        };
-
-        // ==========================================
-        // VIDEO ENGINE — ERROR 153 FULLY HANDLED
+        // VIDEO ENGINE + TELEPARTY SYNC
         // ==========================================
         const engine = {
             v: document.getElementById('main-video'), ytPlayer: null, ytContainer: document.getElementById('yt-video-container'),
@@ -606,7 +627,9 @@
                     const dur = state.video.type === 'youtube' && this.ytPlayer ? this.ytPlayer.getDuration() : this.v.duration;
                     if(!isFinite(dur)) return;
                     const pos = ((e.clientX - progCont.getBoundingClientRect().left) / progCont.getBoundingClientRect().width) * dur;
-                    if(state.video.type === 'youtube') { this.ytPlayer.seekTo(pos); logic.emitSync('seek', pos); } else { this.v.currentTime = pos; }
+                    
+                    if(state.video.type === 'youtube') { this.ytPlayer.seekTo(pos); } else { this.v.currentTime = pos; }
+                    logic.emitSync('seek', { time: pos });
                 });
 
                 this.setupGestures();
@@ -629,18 +652,22 @@
 
                 this.loadVideo(mockLibrary[0].url, mockLibrary[0].type, mockLibrary[0].ytId);
             },
-            
+            getCurrentTime() {
+                return state.video.type === 'youtube' && this.ytPlayer && this.ytPlayer.getCurrentTime ? this.ytPlayer.getCurrentTime() : this.v.currentTime;
+            },
             onPlay(time) {
                 state.video.isPlaying = true;
                 document.getElementById('icon-play').classList.add('hidden'); document.getElementById('icon-pause').classList.remove('hidden');
                 document.getElementById('video-status-text').textContent = "Playing"; document.getElementById('video-status-text').classList.remove('animate-pulse');
-                this.resetHideTimer(); logic.emitSync('play', time);
+                this.resetHideTimer(); 
+                logic.emitSync('play', { time });
             },
             onPause(time) {
                 state.video.isPlaying = false;
                 document.getElementById('icon-play').classList.remove('hidden'); document.getElementById('icon-pause').classList.add('hidden');
                 document.getElementById('video-status-text').textContent = "Paused";
-                this.showControls(); logic.emitSync('pause', time);
+                this.showControls(); 
+                logic.emitSync('pause', { time });
             },
             onTimeUpdate(curr, dur) {
                 if (!dur || !isFinite(dur)) {
@@ -665,16 +692,32 @@
                 if(state.video.type === 'youtube') { state.video.isPlaying ? this.ytPlayer.pauseVideo() : this.ytPlayer.playVideo(); }
                 else { state.video.isPlaying ? this.v.pause() : this.v.play(); }
             },
+            forcePlay() {
+                if(state.video.type === 'youtube' && this.ytPlayer) this.ytPlayer.playVideo();
+                else this.v.play();
+            },
+            forcePause() {
+                if(state.video.type === 'youtube' && this.ytPlayer) this.ytPlayer.pauseVideo();
+                else this.v.pause();
+            },
             seek(amount) { 
                 if(this.isRestricted()) return;
+                let newTime;
                 if(state.video.type === 'youtube') {
                     if(!this.ytPlayer || !isFinite(this.ytPlayer.getDuration())) return;
-                    this.ytPlayer.seekTo(this.ytPlayer.getCurrentTime() + amount);
+                    newTime = this.ytPlayer.getCurrentTime() + amount;
+                    this.ytPlayer.seekTo(newTime);
                 } else {
                     if(!isFinite(this.v.duration)) return;
                     this.v.currentTime += amount; 
+                    newTime = this.v.currentTime;
                 }
                 ui.showToast(`Seeked ${amount>0?'+':''}${amount}s`);
+                logic.emitSync('seek', { time: newTime });
+            },
+            forceSeek(time) {
+                if(state.video.type === 'youtube' && this.ytPlayer) this.ytPlayer.seekTo(time);
+                else this.v.currentTime = time;
             },
             toggleMute() {
                 state.video.isMuted = !state.video.isMuted;
@@ -684,10 +727,17 @@
                 else { document.getElementById('icon-vol-up').classList.remove('hidden'); document.getElementById('icon-vol-mute').classList.add('hidden'); }
             },
 
-            // Called by error overlay button
+            setQuality(val) {
+                const labels = { '-1': 'AUTO', '1080': '1080p', '720': '720p' };
+                document.getElementById('quality-badge').textContent = labels[val];
+                document.getElementById('quality-menu').classList.add('hidden');
+                if (state.video.type === 'hls' && state.video.hls) {
+                    state.video.hls.currentLevel = val === '-1' ? -1 : (val === '1080' ? 2 : 1);
+                }
+            },
+
             handleError153Fallback() {
                 ytHelper.hideEmbedError();
-                // Load next non-errored video in library
                 const fallback = mockLibrary.find(v => v.ytId !== state.video.currentYtId);
                 if(fallback) { this.loadVideo(fallback.url, fallback.type, fallback.ytId); }
             },
@@ -748,10 +798,13 @@
             hideControls() { if(state.video.isPlaying) { document.getElementById('video-overlay').style.opacity = '0'; state.ui.controlsVisible = false; } },
             resetHideTimer() { clearTimeout(state.ui.controlsTimeout); if(state.video.isPlaying) state.ui.controlsTimeout = setTimeout(() => this.hideControls(), 3000); },
             
-            loadVideo(url, type, ytId) {
+            loadVideo(url, type, ytId, isSync = false) {
                 ytHelper.hideEmbedError();
                 document.getElementById('video-loader').classList.remove('hidden'); document.getElementById('video-status-text').textContent = "Buffering...";
-                state.video.type = type; state.video.currentYtId = ytId;
+                
+                state.video.type = type; state.video.currentYtId = ytId; state.video.currentUrl = url;
+
+                if (!isSync) { logic.emitSync('load', { video: { url, type, ytId } }); }
 
                 if (state.video.hls) state.video.hls.destroy();
 
@@ -764,7 +817,6 @@
                                 playerVars: {
                                     autoplay: 1, controls: 0, disablekb: 1, rel: 0,
                                     modestbranding: 1, playsinline: 1, enablejsapi: 1,
-                                    // origin param helps reduce Error 153 on some videos
                                     origin: window.location.origin
                                 },
                                 events: {
@@ -774,15 +826,7 @@
                                         else if(e.data === YT.PlayerState.PAUSED) this.onPause(this.ytPlayer.getCurrentTime());
                                         else if(e.data === YT.PlayerState.ENDED) this.onPause(0);
                                     },
-                                    // ERROR 153 FIX: properly handle all embed-restriction codes
-                                    'onError': (e) => {
-                                        // YT error codes that mean "embedding not allowed":
-                                        // 101 = not allowed in embedded players
-                                        // 150 = same as 101 (obfuscated)
-                                        // 5  = HTML5 player error (often embedding-related)
-                                        // 153 = deprecated but still seen; maps to 101/150
-                                        ytHelper.handleError(e.data, ytId, null);
-                                    }
+                                    'onError': (e) => { ytHelper.handleError(e.data, ytId, null); }
                                 }
                             });
                         } else {
@@ -841,10 +885,10 @@
                     const val = e.target.value; e.target.style.setProperty('--value', `${val}%`);
                     if(state.music.type === 'youtube' && this.ytPlayer) {
                         const dur = this.ytPlayer.getDuration();
-                        if(isFinite(dur)) { this.ytPlayer.seekTo((val / 100) * dur); logic.emitSync('seek (music)', this.ytPlayer.getCurrentTime()); }
+                        if(isFinite(dur)) { this.ytPlayer.seekTo((val / 100) * dur); logic.emitSync('seek', { time: this.ytPlayer.getCurrentTime() }); }
                     } else {
                         if(!isFinite(this.a.duration)) return;
-                        this.a.currentTime = (val / 100) * this.a.duration; logic.emitSync('seek (music)', this.a.currentTime);
+                        this.a.currentTime = (val / 100) * this.a.duration; logic.emitSync('seek', { time: this.a.currentTime });
                     }
                 });
 
@@ -861,13 +905,13 @@
                 document.getElementById('music-icon-play').classList.add('hidden'); document.getElementById('music-icon-pause').classList.remove('hidden');
                 this.recordEl.classList.remove('spin-paused');
                 if(this.a === this.aReal && state.music.type !== 'youtube' && !state.music.audioContext) this.initWebAudio();
-                ui.renderPlaylist(); logic.emitSync('play (music)', state.music.type === 'youtube' ? this.ytPlayer.getCurrentTime() : this.a.currentTime);
+                ui.renderPlaylist(); logic.emitSync('play', { time: state.music.type === 'youtube' ? this.ytPlayer.getCurrentTime() : this.a.currentTime });
             },
             onPause() {
                 state.music.isPlaying = false;
                 document.getElementById('music-icon-play').classList.remove('hidden'); document.getElementById('music-icon-pause').classList.add('hidden');
                 this.recordEl.classList.add('spin-paused');
-                ui.renderPlaylist(); logic.emitSync('pause (music)', state.music.type === 'youtube' ? this.ytPlayer.getCurrentTime() : this.a.currentTime);
+                ui.renderPlaylist(); logic.emitSync('pause', { time: state.music.type === 'youtube' ? this.ytPlayer.getCurrentTime() : this.a.currentTime });
             },
             onTimeUpdate(curr, dur) {
                 if (!dur || !isFinite(dur)) {
@@ -913,9 +957,7 @@
                                         else if(e.data === YT.PlayerState.PAUSED) this.onPause();
                                         else if(e.data === YT.PlayerState.ENDED) this.nextTrack();
                                     },
-                                    'onError': (e) => {
-                                        ytHelper.handleError(e.data, track.ytId, () => this.nextTrack());
-                                    }
+                                    'onError': (e) => { ytHelper.handleError(e.data, track.ytId, () => this.nextTrack()); }
                                 }
                             });
                         } else {
@@ -1000,7 +1042,7 @@
         };
 
         // ==========================================
-        // APP LOGIC & TELEPARTY
+        // APP LOGIC & TELEPARTY (FIREBASE)
         // ==========================================
         const logic = {
             sleepTimer: null,
@@ -1018,21 +1060,48 @@
                     ui.showToast('Sleep timer set for 30m', 'success'); document.getElementById('btn-sleep-timer').classList.add('text-blue-400');
                 }
             },
-            createRoom() { 
+            async createRoom() { 
+                if (!db || !currentUser) return ui.showToast('Server connection pending...', 'error');
                 const name = document.getElementById('tp-user-name').value.trim();
                 if(!name) { ui.showToast('Please enter your name', 'error'); return; }
                 const id = Math.random().toString(36).substring(2, 8).toUpperCase(); 
-                state.teleparty.userName = name; this.connectRoom(id, 'host'); 
+                state.teleparty.userName = name;
+                
+                try {
+                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', id);
+                    await setDoc(roomRef, {
+                        host: currentUser.uid,
+                        video: { url: state.video.currentUrl, type: state.video.type, ytId: state.video.currentYtId },
+                        state: state.video.isPlaying ? 'playing' : 'paused',
+                        time: engine.getCurrentTime(),
+                        updatedAt: Date.now(),
+                        messages: [{ sender: 'System', text: `${name} created the room.` }]
+                    });
+                    this.connectRoom(id, 'host'); 
+                } catch(e) { ui.showToast('Error creating room', 'error'); }
             },
-            joinRoom() { 
-                const name = document.getElementById('tp-user-name').value.trim(); const id = document.getElementById('tp-room-id').value.trim(); 
+            async joinRoom() { 
+                if (!db || !currentUser) return ui.showToast('Server connection pending...', 'error');
+                const name = document.getElementById('tp-user-name').value.trim(); const id = document.getElementById('tp-room-id').value.trim().toUpperCase(); 
                 if(!name) { ui.showToast('Please enter your name', 'error'); return; } if(!id) { ui.showToast('Please enter a Room ID', 'error'); return; }
-                state.teleparty.userName = name; this.connectRoom(id, 'viewer'); 
+                
+                try {
+                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', id);
+                    const snap = await getDoc(roomRef);
+                    if (!snap.exists()) {
+                        ui.showToast('Invalid Room ID. The room may have been closed.', 'error');
+                        return;
+                    }
+                    state.teleparty.userName = name; 
+                    await updateDoc(roomRef, { messages: arrayUnion({ sender: 'System', text: `${name} joined the room.` }) });
+                    this.connectRoom(id, 'viewer'); 
+                } catch(e) { ui.showToast('Error joining room', 'error'); }
             },
             connectRoom(id, role) {
                 document.getElementById('tp-setup').classList.add('hidden'); document.getElementById('tp-active').classList.remove('hidden'); document.getElementById('tp-active').classList.add('flex');
                 document.getElementById('tp-display-id').textContent = id; document.getElementById('teleparty-badge').classList.remove('hidden');
-                state.teleparty.inRoom = true; state.teleparty.roomId = id; state.teleparty.role = role;
+                state.teleparty.inRoom = true; state.teleparty.roomId = id; state.teleparty.role = role; state.teleparty.lastMessageCount = 0;
+                
                 const badge = document.getElementById('tp-role-badge');
                 if(role === 'host') {
                     badge.textContent = "HOST"; badge.className = "px-2 py-1 rounded text-xs font-bold border border-green-500/50 text-green-400 bg-green-500/10";
@@ -1041,9 +1110,41 @@
                     badge.textContent = "VIEWER"; badge.className = "px-2 py-1 rounded text-xs font-bold border border-gray-500/50 text-gray-400 bg-gray-500/10";
                     document.getElementById('host-badge').classList.remove('hidden'); document.querySelectorAll('.host-controlled-ui').forEach(el => el.classList.add('viewer-restricted'));
                 }
-                ui.showToast(`Joined room as ${role}`, 'success'); this.appendChat('System', `${state.teleparty.userName} joined the room.`);
+                ui.showToast(`Joined room as ${role}`, 'success');
+
+                const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', id);
+                unsubRoom = onSnapshot(roomRef, (docSnap) => {
+                    if (!docSnap.exists()) { this.leaveRoom(); ui.showToast('Room was closed', 'error'); return; }
+                    const data = docSnap.data();
+
+                    // Chat sync
+                    const c = document.getElementById('chat-messages'); c.innerHTML = '';
+                    data.messages.forEach((m, idx) => {
+                        this.appendChat(m.sender, m.text, m.sender === state.teleparty.userName);
+                        if (idx >= state.teleparty.lastMessageCount && ['🔥','😂','❤️','👀'].includes(m.text) && m.sender !== state.teleparty.userName) {
+                            this.spawnFloatingEmoji(m.text);
+                        }
+                    });
+                    state.teleparty.lastMessageCount = data.messages.length;
+
+                    // Viewer Video Sync
+                    if (role === 'viewer') {
+                        if (data.video && data.video.url !== state.video.currentUrl) {
+                            engine.loadVideo(data.video.url, data.video.type, data.video.ytId, true);
+                        }
+                        let expectedTime = data.time || 0;
+                        if (data.state === 'playing') expectedTime += (Date.now() - (data.updatedAt || Date.now())) / 1000;
+                        
+                        const currentLocalTime = engine.getCurrentTime();
+                        if (Math.abs(currentLocalTime - expectedTime) > 2.5 && isFinite(expectedTime)) { engine.forceSeek(expectedTime); }
+                        
+                        if (data.state === 'playing' && !state.video.isPlaying) { engine.forcePlay(); } 
+                        else if (data.state === 'paused' && state.video.isPlaying) { engine.forcePause(); }
+                    }
+                }, (error) => { console.error("Room sync error", error); });
             },
             leaveRoom() {
+                if (unsubRoom) { unsubRoom(); unsubRoom = null; }
                 document.getElementById('tp-setup').classList.remove('hidden'); document.getElementById('tp-active').classList.add('hidden'); document.getElementById('tp-active').classList.remove('flex');
                 document.getElementById('teleparty-badge').classList.add('hidden'); document.getElementById('host-badge').classList.add('hidden');
                 document.querySelectorAll('.host-controlled-ui').forEach(el => el.classList.remove('viewer-restricted'));
@@ -1054,9 +1155,31 @@
                 const el = document.createElement('textarea'); el.value = state.teleparty.roomId; document.body.appendChild(el); el.select();
                 try { document.execCommand('copy'); ui.showToast('Room ID copied to clipboard', 'success'); } catch (err) { ui.showToast('Failed to copy', 'error'); } document.body.removeChild(el);
             },
-            emitSync(event, time) { if(!state.teleparty.inRoom || state.teleparty.role !== 'host') return; this.appendChat('Sync', `${event.toUpperCase()} at ${ui.formatTime(time)}`); },
-            sendChat() { const input = document.getElementById('chat-input'); const val = input.value.trim(); if(val) { this.appendChat(state.teleparty.userName, val, true); input.value = ''; } },
-            sendEmoji(emoji) { this.appendChat(state.teleparty.userName, emoji, true); this.spawnFloatingEmoji(emoji); },
+            emitSync(action, payload) { 
+                if(!state.teleparty.inRoom || state.teleparty.role !== 'host' || !db) return; 
+                const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', state.teleparty.roomId);
+                let updates = { updatedAt: Date.now() };
+                if (action === 'play') { updates.state = 'playing'; updates.time = payload.time; }
+                else if (action === 'pause') { updates.state = 'paused'; updates.time = payload.time; }
+                else if (action === 'seek') { updates.time = payload.time; }
+                else if (action === 'load') { updates.video = payload.video; updates.state = 'playing'; updates.time = 0; }
+                updateDoc(roomRef, updates).catch(e => console.error("Sync error:", e));
+            },
+            async sendChat() { 
+                const input = document.getElementById('chat-input'); const val = input.value.trim(); 
+                if(val && state.teleparty.inRoom) { 
+                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', state.teleparty.roomId);
+                    await updateDoc(roomRef, { messages: arrayUnion({ sender: state.teleparty.userName, text: val }) });
+                    input.value = ''; 
+                } 
+            },
+            async sendEmoji(emoji) { 
+                if(state.teleparty.inRoom) {
+                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', state.teleparty.roomId);
+                    await updateDoc(roomRef, { messages: arrayUnion({ sender: state.teleparty.userName, text: emoji }) });
+                    this.spawnFloatingEmoji(emoji);
+                } else { this.spawnFloatingEmoji(emoji); }
+            },
             appendChat(sender, msg, isSelf = false) {
                 const c = document.getElementById('chat-messages'); const div = document.createElement('div');
                 div.className = `text-xs ${isSelf ? 'text-right' : 'text-left'}`;
@@ -1102,6 +1225,13 @@
                 ui.renderPlaylist(); ui.showToast('Track removed');
             }
         };
+
+        // Expose functions globally for HTML inline handlers to work correctly in module scope
+        window.ui = ui;
+        window.logic = logic;
+        window.engine = engine;
+        window.musicEngine = musicEngine;
+        window.searchEngine = searchEngine;
 
         document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click', () => ui.switchTab(btn.dataset.target)));
