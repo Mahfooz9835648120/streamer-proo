@@ -64,26 +64,12 @@
     <!-- Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     
-    <!-- HLS.js -->
+    <!-- HLS.js & DASH.js -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-    <!-- DASH.js -->
     <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
     
-    <!-- YouTube IFrame API -->
+    <!-- YouTube IFrame API — loaded once, globally -->
     <script src="https://www.youtube.com/iframe_api"></script>
-    
-    <!-- Socket.io -->
-    <script src="/socket.io/socket.io.js"></script>
-    <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
-        import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
-        window.firebaseReady = false;
-        if (window.__FIREBASE_CONFIG__) {
-            const app = initializeApp(window.__FIREBASE_CONFIG__);
-            window.firestoreDb = getFirestore(app);
-            window.firebaseReady = true;
-        }
-    </script>
 
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #000; color: #fff; overflow: hidden; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
@@ -120,37 +106,57 @@
         .floating-emoji { position: absolute; pointer-events: none; font-size: 2rem; z-index: 100; }
         .viewer-restricted { opacity: 0.5; pointer-events: none !important; filter: grayscale(1); }
         
-        #yt-video-container iframe { width: 100% !important; height: 100% !important; pointer-events: none !important; }
+        /* FIX: YT iframe must fill container but allow our gesture layer on top */
+        #yt-video-container { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; background: #000; }
+        #yt-video-container iframe { width: 100% !important; height: 100% !important; border: none; display: block; }
+
         .spin-record { animation: spin 12s linear infinite; }
         .spin-paused { animation-play-state: paused; }
 
-        /* Error 153 overlay */
         #yt-error-overlay { position: absolute; inset: 0; z-index: 30; background: rgba(0,0,0,0.85); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px; text-align: center; border-radius: inherit; }
         #yt-error-overlay.visible { display: flex; }
+
+        /* Ensure gesture layer sits above YT iframe */
+        #gesture-layer { z-index: 15 !important; }
+        #video-overlay { z-index: 20 !important; }
+        #video-loader { z-index: 25 !important; }
+        #yt-error-overlay { z-index: 30 !important; }
     </style>
 </head>
 <body class="antialiased selection:bg-white/20">
 
-    <div id="auth-overlay" class="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-6 hidden">
-        <div class="w-full max-w-sm glass-panel rounded-2xl border border-white/10 p-6 space-y-4">
-            <h2 class="text-lg font-bold tracking-widest text-center">WELCOME</h2>
-            <p class="text-xs text-gray-400 text-center">Login or create your Custom ID to continue.</p>
-            <div class="flex justify-center">
-                <img id="overlay-avatar-preview" src="" class="w-16 h-16 rounded-full border border-white/20 bg-white/5" alt="Avatar">
+    <!-- Auth Overlay -->
+    <div id="auth-overlay" class="fixed inset-0 z-[100000] bg-black/90 backdrop-blur-xl flex items-center justify-center transition-opacity duration-500">
+        <div class="glass-panel p-8 rounded-3xl w-[90%] max-w-sm flex flex-col gap-6 transform transition-transform shadow-[0_0_50px_rgba(255,255,255,0.05)] border border-white/10">
+            <div class="text-center">
+                <div class="w-12 h-12 border-2 border-white rounded-lg flex items-center justify-center transform rotate-45 mx-auto mb-4 shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+                    <div class="w-4 h-4 bg-white rounded-sm transform -rotate-45"></div>
+                </div>
+                <h2 class="text-xl font-bold tracking-widest mb-1">STREAMER<span class="font-light text-gray-400">PRO</span></h2>
+                <p class="text-xs text-gray-400">Sign in or create your cloud ID</p>
             </div>
-            <input type="text" id="overlay-name" placeholder="Your Name" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30">
-            <input type="text" id="overlay-login-id" placeholder="Custom ID" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30 lowercase">
-            <input type="password" id="overlay-password" placeholder="Password" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30">
-            <div class="grid grid-cols-2 gap-2">
-                <button id="gender-male" onclick="logic.selectGender('male')" class="border border-white/20 rounded-xl py-2 text-sm">Male</button>
-                <button id="gender-female" onclick="logic.selectGender('female')" class="border border-white/20 rounded-xl py-2 text-sm">Female</button>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] font-bold tracking-widest text-gray-500">CUSTOM ID</label>
+                    <input type="text" id="auth-username" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 mt-1 text-sm text-white focus:outline-none focus:border-white/30 shadow-inner transition-colors" placeholder="e.g. Maverick" autocomplete="off">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold tracking-widest text-gray-500">PASSWORD</label>
+                    <input type="password" id="auth-password" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 mt-1 text-sm text-white focus:outline-none focus:border-white/30 shadow-inner transition-colors" placeholder="••••••••" autocomplete="off">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold tracking-widest text-gray-500">AVATAR GENDER</label>
+                    <div class="flex gap-2 mt-1">
+                        <label class="flex-1 text-center cursor-pointer relative z-10"><input type="radio" name="auth-gender" value="male" checked class="peer sr-only"><div class="py-2.5 text-xs font-semibold rounded-xl peer-checked:bg-white peer-checked:text-black border border-white/10 text-gray-400 transition-all">Male</div></label>
+                        <label class="flex-1 text-center cursor-pointer relative z-10"><input type="radio" name="auth-gender" value="female" class="peer sr-only"><div class="py-2.5 text-xs font-semibold rounded-xl peer-checked:bg-white peer-checked:text-black border border-white/10 text-gray-400 transition-all">Female</div></label>
+                    </div>
+                </div>
             </div>
-            <div class="grid grid-cols-2 gap-2">
-                <button onclick="logic.overlayRegister()" class="bg-white text-black font-semibold py-3 rounded-xl hover:bg-gray-200 transition-colors">Create ID</button>
-                <button onclick="logic.overlayLogin()" class="border border-white/20 text-white font-semibold py-3 rounded-xl hover:bg-white/5 transition-colors">Login</button>
+            <div class="flex gap-3 mt-2" id="auth-buttons-container">
+                <button onclick="authManager.login()" id="btn-auth-login" class="flex-1 bg-white/5 hover:bg-white/10 text-white font-semibold py-3 rounded-xl transition-colors text-sm border border-white/10 opacity-50 cursor-not-allowed" disabled>Log In</button>
+                <button onclick="authManager.signup()" id="btn-auth-signup" class="flex-1 bg-white text-black font-semibold py-3 rounded-xl hover:bg-gray-200 transition-colors text-sm shadow-[0_0_20px_rgba(255,255,255,0.2)] opacity-50 cursor-not-allowed" disabled>Create ID</button>
             </div>
-            <button onclick="logic.continueGuest()" class="w-full text-xs text-gray-400 underline">Continue as Guest (offline mode)</button>
-            <p id="auth-overlay-status" class="text-center text-xs text-gray-500">Ready</p>
+            <p id="auth-error" class="text-gray-400 text-xs text-center font-medium h-4">Connecting to servers...</p>
         </div>
     </div>
 
@@ -164,15 +170,15 @@
                 <div class="w-6 h-6 border-2 border-white rounded-sm flex items-center justify-center transform rotate-45">
                     <div class="w-2 h-2 bg-white rounded-sm transform -rotate-45"></div>
                 </div>
-                <h1 class="text-lg font-bold tracking-widest">STREAMER<span class="font-light text-gray-400">PRO</span></h1>
+                <h1 class="text-lg font-bold tracking-widest hidden sm:block">STREAMER<span class="font-light text-gray-400">PRO</span></h1>
             </div>
             <div class="flex items-center gap-4 text-gray-400">
-                <button class="hover:text-white transition-colors" onclick="ui.togglePanel('admin-panel')"><i data-lucide="settings" class="w-5 h-5"></i></button>
-                <button class="hover:text-white transition-colors" onclick="engine.togglePiP()" title="Picture in Picture"><i data-lucide="cast" class="w-5 h-5"></i></button>
-                <button class="hover:text-white transition-colors relative" onclick="ui.togglePanel('account-panel')" title="Account">
-                    <i data-lucide="user-circle-2" class="w-5 h-5"></i>
-                    <span id="auth-badge" class="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full hidden"></span>
-                </button>
+                <div id="user-profile-badge" class="hidden items-center gap-2 bg-white/5 border border-white/10 rounded-full pl-2 pr-4 py-1.5 cursor-pointer hover:bg-white/10 transition-colors" onclick="authManager.logout()">
+                    <img id="user-avatar" src="" class="w-6 h-6 rounded-full bg-black/50">
+                    <span id="user-name-display" class="text-xs font-bold text-white max-w-[80px] truncate"></span>
+                </div>
+                <button class="hover:text-white transition-colors" onclick="ui.togglePanel('admin-panel')"><i data-lucide="plus-circle" class="w-5 h-5"></i></button>
+                <button class="hover:text-white transition-colors hidden sm:block" onclick="engine.togglePiP()" title="Picture in Picture"><i data-lucide="cast" class="w-5 h-5"></i></button>
                 <button class="hover:text-white transition-colors relative" onclick="ui.togglePanel('watch-together-panel')" title="Watch Together">
                     <i data-lucide="users" class="w-5 h-5"></i>
                     <span id="teleparty-badge" class="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full hidden"></span>
@@ -182,7 +188,7 @@
 
         <main id="main-content" class="flex-1 relative overflow-hidden flex flex-col scroll-smooth">
             
-            <div class="px-4 py-2 shrink-0 relative z-50 w-full transition-all duration-300" id="search-container">
+            <div class="px-4 py-2 shrink-0 relative z-40 w-full transition-all duration-300" id="search-container">
                 <div class="glass flex items-center gap-3 px-4 py-3 rounded-2xl text-gray-400 focus-within:border-white/30 transition-colors">
                     <i data-lucide="search" class="w-5 h-5"></i>
                     <input type="text" id="search-input" placeholder="Search YouTube, paste links..." class="bg-transparent border-none outline-none w-full text-white placeholder-gray-500 text-sm" autocomplete="off">
@@ -195,9 +201,11 @@
                 <div class="px-4 shrink-0 transition-all duration-300" id="video-wrapper">
                     <div id="player-container" class="relative w-full aspect-video rounded-2xl overflow-hidden bg-surface border border-border shadow-[0_0_40px_rgba(255,255,255,0.05)] group transition-all duration-300">
                         
+                        <!-- Native video element (shown for non-YT) -->
                         <video id="main-video" class="w-full h-full object-contain bg-black absolute inset-0 z-0" playsinline preload="metadata"></video>
                         
-                        <div id="yt-video-container" class="absolute inset-0 w-full h-full z-0 hidden pointer-events-none bg-black flex items-center justify-center">
+                        <!-- YouTube container (shown for YT videos) — sits at z-1, gesture layer at z-15 sits on top -->
+                        <div id="yt-video-container" class="hidden">
                             <div id="yt-video-placeholder"></div>
                         </div>
 
@@ -214,15 +222,15 @@
                             </a>
                         </div>
 
-                        <!-- GESTURE LAYER (Receives Double Taps & Swipes) -->
-                        <div id="gesture-layer" class="absolute inset-0 z-10 flex cursor-pointer pointer-events-auto">
+                        <!-- GESTURE LAYER — pointer-events-auto so taps work -->
+                        <div id="gesture-layer" class="absolute inset-0 flex cursor-pointer pointer-events-auto">
                             <div class="w-1/3 h-full flex items-center justify-center pointer-events-none" id="gesture-left"><div class="bg-black/50 rounded-full p-4 opacity-0 transition-opacity transform scale-75" id="ripple-left"><i data-lucide="chevrons-left" class="w-8 h-8 text-white"></i></div></div>
                             <div class="w-1/3 h-full"></div>
                             <div class="w-1/3 h-full flex items-center justify-center pointer-events-none" id="gesture-right"><div class="bg-black/50 rounded-full p-4 opacity-0 transition-opacity transform scale-75" id="ripple-right"><i data-lucide="chevrons-right" class="w-8 h-8 text-white"></i></div></div>
                         </div>
 
-                        <!-- VIDEO UI OVERLAY (Passes pointer events through, except for buttons) -->
-                        <div id="video-overlay" class="absolute inset-0 z-20 flex flex-col justify-between p-4 bg-gradient-to-t from-black/90 via-black/20 to-black/60 transition-opacity duration-300 pointer-events-none">
+                        <!-- VIDEO UI OVERLAY -->
+                        <div id="video-overlay" class="absolute inset-0 flex flex-col justify-between p-4 bg-gradient-to-t from-black/90 via-black/20 to-black/60 transition-opacity duration-300 pointer-events-none">
                             
                             <div class="flex justify-between items-start pointer-events-auto w-full">
                                 <div class="flex flex-col gap-2">
@@ -264,18 +272,19 @@
                             </div>
                         </div>
 
-                        <div id="video-loader" class="absolute inset-0 z-10 flex items-center justify-center bg-black/60 backdrop-blur-sm hidden"><i data-lucide="loader-2" class="w-8 h-8 animate-spin text-white"></i></div>
+                        <div id="video-loader" class="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm hidden"><i data-lucide="loader-2" class="w-8 h-8 animate-spin text-white"></i></div>
                     </div>
                 </div>
 
-                <div class="px-6 flex gap-2 overflow-x-auto pb-4 shrink-0 no-scrollbar mt-2">
-                    <div class="glass px-3 py-1 rounded-full text-[10px] font-bold tracking-wider text-gray-400 whitespace-nowrap flex items-center gap-2 uppercase"><div class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>Custom Engine Active</div>
-                    <div class="glass px-3 py-1 rounded-full text-[10px] font-bold tracking-wider text-gray-400 whitespace-nowrap uppercase" id="buffer-health">Buffer: Good</div>
-                </div>
-
-                <div id="library-wrap" class="px-4 mt-2 flex-1 transition-all duration-300">
+                <div id="library-wrap" class="px-4 mt-6 flex-1 transition-all duration-300">
                     <div class="flex items-center justify-between mb-4">
-                        <h2 class="text-sm font-bold tracking-widest text-gray-300">LIBRARY</h2>
+                        <h2 class="text-sm font-bold tracking-widest text-gray-300 flex items-center gap-2"><i data-lucide="cloud" class="w-4 h-4"></i> CLOUD LIBRARY</h2>
+                        <span id="library-count" class="text-xs text-gray-500 font-medium">0 Items</span>
+                    </div>
+                    <div id="library-empty" class="hidden flex-col items-center justify-center p-8 glass rounded-2xl text-center border-dashed border-white/20">
+                        <i data-lucide="video" class="w-8 h-8 text-white/20 mb-3"></i>
+                        <p class="text-sm text-gray-400 font-medium">Your library is empty</p>
+                        <p class="text-xs text-gray-500 mt-1">Search YouTube or paste a URL to add media.</p>
                     </div>
                     <div class="grid grid-cols-2 sm:grid-cols-3 gap-4" id="video-library-grid"></div>
                 </div>
@@ -287,6 +296,7 @@
                 <audio id="main-audio" preload="metadata" crossorigin="anonymous"></audio>
                 <audio id="custom-audio" preload="metadata"></audio>
                 
+                <!-- Hidden YT audio player container -->
                 <div id="yt-audio-container" class="fixed top-0 left-0 w-0 h-0 overflow-hidden opacity-0 pointer-events-none z-[-1]"><div id="yt-audio-placeholder"></div></div>
 
                 <div class="flex-shrink-0 w-full flex flex-col items-center z-10 px-6">
@@ -307,8 +317,8 @@
                     </div>
 
                     <div class="text-center mb-6 w-full animate-breathe flex flex-col items-center">
-                        <h2 id="music-title" class="text-2xl sm:text-3xl font-bold tracking-tight mb-1 truncate max-w-full drop-shadow-md">Canon in D</h2>
-                        <p id="music-artist" class="text-xs sm:text-sm text-gray-400 truncate drop-shadow max-w-[80%]">Classical Essentials</p>
+                        <h2 id="music-title" class="text-2xl sm:text-3xl font-bold tracking-tight mb-1 truncate max-w-full drop-shadow-md">Select a Track</h2>
+                        <p id="music-artist" class="text-xs sm:text-sm text-gray-400 truncate drop-shadow max-w-[80%]">Cloud Playlist</p>
                     </div>
 
                     <div class="w-full mb-6 relative host-controlled-ui">
@@ -334,7 +344,8 @@
                 </div>
 
                 <div id="music-playlist-wrap" class="w-full px-4 flex-1 z-10 bg-gradient-to-t from-black via-black/80 to-transparent pt-4 border-t border-white/10 transition-all duration-300">
-                    <h3 class="text-[10px] font-bold tracking-widest text-gray-400 mb-4 px-2 uppercase">Playlist</h3>
+                    <h3 class="text-[10px] font-bold tracking-widest text-gray-400 mb-4 px-2 uppercase flex items-center gap-2"><i data-lucide="cloud" class="w-3 h-3"></i> Cloud Playlist</h3>
+                    <div id="playlist-empty" class="hidden text-center py-4 text-xs text-gray-500 font-medium">Playlist is empty</div>
                     <div class="space-y-2" id="music-playlist"></div>
                 </div>
             </section>
@@ -363,7 +374,7 @@
         <!-- Admin Panel -->
         <aside id="admin-panel" class="fixed top-0 right-0 h-full w-full max-w-sm glass-panel z-50 transform translate-x-full transition-transform duration-400 flex flex-col">
             <div class="p-6 border-b border-border flex items-center justify-between">
-                <h2 class="text-sm font-bold tracking-widest">ADMIN PANEL</h2>
+                <h2 class="text-sm font-bold tracking-widest">ADD CLOUD MEDIA</h2>
                 <button onclick="ui.closeAllPanels()" class="p-2 hover:bg-white/10 rounded-full"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
             <div class="p-6 flex-1 overflow-y-auto">
@@ -387,18 +398,7 @@
                         <label class="text-[10px] font-bold tracking-widest text-gray-500">THUMBNAIL URL (OPTIONAL)</label>
                         <input type="url" id="admin-thumb" placeholder="https://..." class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30">
                     </div>
-                    <div class="space-y-2 border border-white/10 rounded-xl p-3 bg-white/5">
-                        <label class="text-[10px] font-bold tracking-widest text-gray-400">MPD ADVANCED OPTIONS (OPTIONAL)</label>
-                        <input type="url" id="admin-mpd-cookie-url" placeholder="Cookie URL (hit before MPD)" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none">
-                        <input type="text" id="admin-mpd-headers" placeholder='Headers JSON {"Authorization":"Bearer ..."}' class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none">
-                        <input type="url" id="admin-mpd-license-url" placeholder="DRM License URL (optional)" class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none">
-                        <input type="text" id="admin-mpd-license-headers" placeholder='DRM Headers JSON {"X-Key":"..."}' class="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none">
-                        <label class="flex items-center gap-2 text-xs text-gray-300">
-                            <input type="checkbox" id="admin-mpd-credentials" class="accent-white">
-                            Use credentials/cookies for MPD requests
-                        </label>
-                    </div>
-                    <button type="submit" class="w-full bg-white text-black font-semibold py-3 rounded-xl hover:bg-gray-200 transition-colors shadow-lg">Add to Library</button>
+                    <button type="submit" class="w-full bg-white text-black font-semibold py-3 rounded-xl hover:bg-gray-200 transition-colors shadow-lg">Save to Library</button>
                 </form>
             </div>
         </aside>
@@ -422,8 +422,8 @@
                     <input type="text" id="auth-login-input" placeholder="your_id" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30 lowercase">
                 </div>
                 <div class="space-y-2">
-                    <label class="text-[10px] font-bold tracking-widest text-gray-500">PASSWORD</label>
-                    <input type="password" id="auth-pin-input" placeholder="Enter password" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30">
+                    <label class="text-[10px] font-bold tracking-widest text-gray-500">PIN (4-8 digits)</label>
+                    <input type="password" id="auth-pin-input" placeholder="1234" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30">
                 </div>
                 <div class="flex gap-2">
                     <button onclick="logic.registerAccount()" class="flex-1 bg-white text-black font-semibold py-3 rounded-xl hover:bg-gray-200 transition-colors">Create ID</button>
@@ -459,11 +459,10 @@
             <div class="p-6 flex-1 flex flex-col gap-6 relative min-h-0">
                 <div id="tp-setup" class="flex flex-col gap-6">
                     <p class="text-sm text-gray-400 text-center">Sync playback perfectly with friends. Hosts control the video, viewers follow along.</p>
-                    <input type="text" id="tp-user-name" placeholder="Your Name" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30 text-center font-medium shadow-inner">
                     <button onclick="logic.createRoom()" class="w-full bg-white text-black font-bold py-4 rounded-xl hover:bg-gray-200 transition-colors shadow-lg flex justify-center items-center gap-2"><i data-lucide="crown" class="w-5 h-5"></i> Create Room (Host)</button>
                     <div class="relative flex items-center justify-center"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-white/10"></div></div><span class="relative px-4 text-xs text-gray-500 bg-[#0a0a0a]">OR</span></div>
                     <div class="space-y-3">
-                        <input type="text" id="tp-room-id" placeholder="Enter Room ID..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30 text-center font-mono uppercase shadow-inner">
+                        <input type="text" id="tp-room-id" placeholder="Enter Room ID..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30 text-center font-mono uppercase shadow-inner" autocomplete="off">
                         <button onclick="logic.joinRoom()" class="w-full border border-white/20 text-white font-semibold py-3 rounded-xl hover:bg-white/5 transition-colors">Join as Viewer</button>
                     </div>
                 </div>
@@ -493,10 +492,81 @@
         </aside>
     </div>
 
-    <script>
+    <!-- Firebase SDK & Application Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, deleteDoc, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        let firebaseUid = null;
+        let globalUnsubscribes = [];
+
+        // Global State
+        const state = {
+            activeView: 'view-video',
+            user: { username: null, avatar: null, gender: null },
+            video: { isPlaying: false, isMuted: false, quality: 'auto', hls: null, dash: null, type: 'native', currentYtId: null, currentUrl: null },
+            music: { isPlaying: false, currentTrackIndex: 0, audioContext: null, analyser: null, dataArray: null, type: 'native', currentUrl: null },
+            teleparty: { inRoom: false, roomId: null, role: null },
+            ui: { controlsVisible: true, controlsTimeout: null },
+            library: [],
+            playlist: []
+        };
+
         lucide.createIcons();
 
-        let socket = null;
+        // ==========================================
+        // AVATAR GENERATOR — random per-gender, per-user seed
+        // ==========================================
+        const avatarGen = {
+            // Male-style top/accessory options for DiceBear avataaars
+            maleStyles: [
+                'shortHairShortFlat', 'shortHairShortRound', 'shortHairShortWaved',
+                'shortHairDreads01', 'shortHairDreads02', 'shortHairFrizzle',
+                'shortHairShaggyShuffle', 'shortHairSides', 'shortHairTheCaesar',
+                'shortHairTheCaesarSidePart', 'hat', 'winterHat1', 'winterHat2',
+                'winterHat3', 'winterHat4', 'turban', 'shortHairMohawk'
+            ],
+            femaleStyles: [
+                'longHairBigHair', 'longHairBob', 'longHairBun', 'longHairCurly',
+                'longHairCurvy', 'longHairDreads', 'longHairFrida', 'longHairFro',
+                'longHairFroBand', 'longHairNotTooLong', 'longHairShavedSides',
+                'longHairMiaWallace', 'longHairStraight', 'longHairStraight2',
+                'longHairStraightStrand', 'longHairBigHair'
+            ],
+            skinColors: ['FFDBB4', 'EDB98A', 'FD9841', 'D08B5B', 'AE5D29', '614335', 'F8D25C', 'FFCBA4'],
+            hairColors: ['A55728', '2C1B18', 'B58143', 'D6B370', 'C93305', '4A312C', 'F59797', 'ECDCBF', '724133'],
+            
+            generate(username, gender) {
+                // Use username as seed for deterministic but varied results
+                const seed = username + '_' + Date.now();
+                const styles = gender === 'female' ? this.femaleStyles : this.maleStyles;
+                const topIdx = this._hashStr(username) % styles.length;
+                const skinIdx = this._hashStr(username + 's') % this.skinColors.length;
+                const hairIdx = this._hashStr(username + 'h') % this.hairColors.length;
+                const top = styles[topIdx];
+                const skin = this.skinColors[skinIdx];
+                const hair = this.hairColors[hairIdx];
+                // Use DiceBear avataaars with specific options
+                return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(seed)}&top=${top}&skinColor=${skin}&hairColor=${hair}&style=circle&backgroundColor=1a1a1a`;
+            },
+
+            // Simple hash to get a consistent index from a string
+            _hashStr(str) {
+                let hash = 0;
+                for (let i = 0; i < str.length; i++) {
+                    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+                    hash |= 0;
+                }
+                return Math.abs(hash);
+            }
+        };
 
         // ==========================================
         // YOUTUBE API QUEUE & ERROR 153 FIX
@@ -504,15 +574,20 @@
         const ytHelper = {
             ready: false, queue: [],
             init() {
-                window.onYouTubeIframeAPIReady = () => { this.ready = true; this.queue.forEach(cb => cb()); this.queue = []; };
+                window.onYouTubeIframeAPIReady = () => {
+                    this.ready = true;
+                    this.queue.forEach(cb => cb());
+                    this.queue = [];
+                };
             },
             execute(cb) { if (this.ready) cb(); else this.queue.push(cb); },
             extractId(url) {
                 const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-                const match = url.match(regExp); return (match && match[2].length === 11) ? match[2] : null;
+                const match = url.match(regExp);
+                return (match && match[2].length === 11) ? match[2] : null;
             },
             handleError(code, ytId, onFallback) {
-                if (code === 150 || code === 101 || code === 5) {
+                if ([150, 101, 5].includes(code)) {
                     this.showEmbedError(ytId);
                     if (onFallback) onFallback();
                 } else if (code === 2) {
@@ -528,13 +603,12 @@
                 overlay.classList.add('visible');
                 document.getElementById('video-loader').classList.add('hidden');
                 document.getElementById('video-status-text').textContent = 'Unavailable';
-                ui.showToast('Video restricted (Error 153) — embedding disabled', 'error');
+                ui.showToast('Video restricted (Error 153)', 'error');
             },
-            hideEmbedError() {
-                document.getElementById('yt-error-overlay').classList.remove('visible');
-            }
+            hideEmbedError() { document.getElementById('yt-error-overlay').classList.remove('visible'); }
         };
         ytHelper.init();
+        window.ytHelper = ytHelper;
 
         const mediaHelper = {
             extractGoogleDriveId(url = '') {
@@ -557,65 +631,63 @@
         };
 
         // ==========================================
-        // STATE & DATA
-        // ==========================================
-        const state = {
-            activeView: 'view-video',
-            video: { isPlaying: false, isMuted: false, quality: 'auto', hls: null, dash: null, type: 'native', currentYtId: null, currentUrl: null },
-            music: { isPlaying: false, currentTrackIndex: 0, audioContext: null, analyser: null, dataArray: null, type: 'native' },
-            auth: { loggedIn: false, loginId: null, name: 'Guest', gender: 'male', avatar: '', updatedAt: null, favorites: [], history: [] },
-            teleparty: { inRoom: false, roomId: null, role: null, userName: 'Guest' },
-            ui: { controlsVisible: true, controlsTimeout: null }
-        };
-
-        const mockLibrary = [
-            { id: 'v0', type: 'youtube', title: 'Lofi Girl - beats to relax/study to', url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk', thumb: 'https://img.youtube.com/vi/jfKfPfyJRdk/maxresdefault.jpg', duration: 'Live', isCustom: false, ytId: 'jfKfPfyJRdk' },
-            { id: 'v1', type: 'hls', title: 'Big Buck Bunny (HLS)', url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8', thumb: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Big_buck_bunny_poster_big.jpg/640px-Big_buck_bunny_poster_big.jpg', duration: '10:34', isCustom: false },
-        ];
-
-        const mockPlaylist = [
-            { title: 'Synthwave Radio', artist: 'Nightride FM', url: 'https://www.youtube.com/watch?v=UedTcufyrHc', duration: 'Live', thumb: 'https://img.youtube.com/vi/UedTcufyrHc/maxresdefault.jpg', isCustom: false, type: 'youtube', ytId: 'UedTcufyrHc' },
-            { title: 'Canon in D', artist: 'Classical Essentials', url: 'https://upload.wikimedia.org/wikipedia/commons/b/be/Pachelbel_-_Canon_in_D_major.ogg', duration: '6:12', thumb: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?auto=format&fit=crop&w=400&q=80', isCustom: false, type: 'native' }
-        ];
-
-        // ==========================================
         // UI CORE
         // ==========================================
         const ui = {
             formatTime: (sec) => {
                 if (isNaN(sec) || !isFinite(sec)) return "Live";
-                const m = Math.floor(sec / 60); const s = Math.floor(sec % 60); return `${m}:${s.toString().padStart(2, '0')}`;
+                const m = Math.floor(sec / 60); const s = Math.floor(sec % 60);
+                return `${m}:${s.toString().padStart(2, '0')}`;
             },
             showToast: (msg, type = 'info') => {
-                const c = document.getElementById('toast-container'); const t = document.createElement('div');
+                const c = document.getElementById('toast-container');
+                const t = document.createElement('div');
                 const colors = type === 'error' ? 'bg-red-500/90 text-white' : type === 'success' ? 'bg-green-500/90 text-white' : 'bg-black/80 text-white border border-white/20';
                 t.className = `px-4 py-2 rounded-full text-xs font-medium shadow-xl backdrop-blur-md animate-pop-in ${colors}`;
                 t.textContent = msg; c.appendChild(t);
-                setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateY(-10px) scale(0.9)'; setTimeout(() => t.remove(), 300); }, 3000);
+                setTimeout(() => {
+                    t.style.opacity = '0'; t.style.transform = 'translateY(-10px) scale(0.9)';
+                    setTimeout(() => t.remove(), 300);
+                }, 3000);
             },
             switchTab(targetId) {
-                state.activeView = targetId; document.querySelectorAll('section').forEach(v => { v.classList.add('hidden'); v.classList.remove('flex'); });
-                const target = document.getElementById(targetId); target.classList.remove('hidden'); target.classList.add('flex');
-                document.querySelectorAll('.nav-btn').forEach(btn => { btn.dataset.target === targetId ? btn.classList.add('active') : btn.classList.remove('active'); });
+                state.activeView = targetId;
+                document.querySelectorAll('section').forEach(v => { v.classList.add('hidden'); v.classList.remove('flex'); });
+                const target = document.getElementById(targetId);
+                target.classList.remove('hidden'); target.classList.add('flex');
+                document.querySelectorAll('.nav-btn').forEach(btn => {
+                    btn.dataset.target === targetId ? btn.classList.add('active') : btn.classList.remove('active');
+                });
             },
             togglePanel(panelId) {
-                const panel = document.getElementById(panelId); const isOpening = panel.classList.contains('translate-x-full'); this.closeAllPanels();
-                if (isOpening) { const backdrop = document.getElementById('panel-backdrop'); backdrop.classList.remove('hidden'); setTimeout(() => backdrop.classList.remove('opacity-0'), 10); panel.classList.remove('translate-x-full'); }
+                const panel = document.getElementById(panelId);
+                const isOpening = panel.classList.contains('translate-x-full');
+                this.closeAllPanels();
+                if (isOpening) {
+                    const backdrop = document.getElementById('panel-backdrop');
+                    backdrop.classList.remove('hidden');
+                    setTimeout(() => backdrop.classList.remove('opacity-0'), 10);
+                    panel.classList.remove('translate-x-full');
+                }
             },
             closeAllPanels() {
-                const backdrop = document.getElementById('panel-backdrop'); backdrop.classList.add('opacity-0'); setTimeout(() => backdrop.classList.add('hidden'), 300);
-                document.getElementById('admin-panel').classList.add('translate-x-full'); document.getElementById('watch-together-panel').classList.add('translate-x-full'); document.getElementById('account-panel').classList.add('translate-x-full');
+                const backdrop = document.getElementById('panel-backdrop');
+                backdrop.classList.add('opacity-0');
+                setTimeout(() => backdrop.classList.add('hidden'), 300);
+                document.getElementById('admin-panel').classList.add('translate-x-full');
+                document.getElementById('watch-together-panel').classList.add('translate-x-full');
             },
-            toggleQualityMenu() {
-                document.getElementById('quality-menu').classList.toggle('hidden');
-            },
+            toggleQualityMenu() { document.getElementById('quality-menu').classList.toggle('hidden'); },
             renderLibrary() {
-                document.getElementById('video-library-grid').innerHTML = mockLibrary.map((vid, idx) => `
-                    <div class="group relative rounded-xl overflow-hidden glass cursor-pointer hover:border-white/30 transition-colors" onclick="logic.playLibraryItem(${idx})">
+                document.getElementById('library-count').textContent = `${state.library.length} Items`;
+                document.getElementById('library-empty').classList.toggle('hidden', state.library.length > 0);
+                if (state.library.length === 0) document.getElementById('library-empty').classList.remove('hidden');
+                document.getElementById('video-library-grid').innerHTML = state.library.map(vid => `
+                    <div class="group relative rounded-xl overflow-hidden glass cursor-pointer hover:border-white/30 transition-colors" onclick="engine.loadVideo('${vid.url}', '${vid.type}', '${vid.ytId || ''}')">
                         <div class="aspect-video relative">
                             <img src="${vid.thumb}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="Thumb">
                             <div class="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors"></div>
-                            ${vid.isCustom ? `<button onclick="event.stopPropagation(); logic.removeVideo('${vid.id}')" class="absolute top-2 left-2 z-20 p-1.5 bg-black/60 backdrop-blur rounded-md text-gray-300 hover:bg-red-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100"><i data-lucide="trash-2" class="w-3 h-3"></i></button>` : ''}
+                            ${vid.isCustom ? `<button onclick="event.stopPropagation(); libraryManager.removeItem('${vid.id}')" class="absolute top-2 left-2 z-20 p-1.5 bg-black/60 backdrop-blur rounded-md text-gray-300 hover:bg-red-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100"><i data-lucide="trash-2" class="w-3 h-3"></i></button>` : ''}
                             <span class="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-md text-[9px] font-bold tracking-wider text-white uppercase">${vid.type}</span>
                         </div>
                         <div class="p-3"><h3 class="text-xs font-semibold truncate text-white">${vid.title}</h3><p class="text-[10px] text-gray-500 mt-1">${vid.duration}</p></div>
@@ -623,42 +695,334 @@
                 lucide.createIcons();
             },
             renderPlaylist() {
-                document.getElementById('music-playlist').innerHTML = mockPlaylist.map((track, idx) => `
+                document.getElementById('playlist-empty').classList.toggle('hidden', state.playlist.length > 0);
+                document.getElementById('music-playlist').innerHTML = state.playlist.map((track, idx) => `
                     <div class="glass p-3 rounded-xl flex items-center gap-3 cursor-pointer hover:bg-white/10 transition group ${idx === state.music.currentTrackIndex ? 'border-white/30 bg-white/5' : ''}" onclick="musicEngine.loadTrack(${idx})">
                         <div class="w-10 h-10 rounded-lg bg-surfaceLight flex flex-shrink-0 items-center justify-center relative overflow-hidden">
                             ${track.thumb ? `<img src="${track.thumb}" class="absolute inset-0 w-full h-full object-cover opacity-60">` : ''}
                             <div class="z-10 relative flex items-center justify-center w-full h-full">
-                                ${idx === state.music.currentTrackIndex && state.music.isPlaying 
-                                    ? `<div class="flex items-end gap-0.5 h-4"><div class="w-1 bg-white animate-eq-bounce rounded-t" style="animation-delay: 0s;"></div><div class="w-1 bg-white animate-eq-bounce rounded-t" style="animation-delay: 0.2s;"></div><div class="w-1 bg-white animate-eq-bounce rounded-t" style="animation-delay: 0.4s;"></div></div>` 
+                                ${idx === state.music.currentTrackIndex && state.music.isPlaying
+                                    ? `<div class="flex items-end gap-0.5 h-4"><div class="w-1 bg-white animate-eq-bounce rounded-t" style="animation-delay: 0s;"></div><div class="w-1 bg-white animate-eq-bounce rounded-t" style="animation-delay: 0.2s;"></div><div class="w-1 bg-white animate-eq-bounce rounded-t" style="animation-delay: 0.4s;"></div></div>`
                                     : `<i data-lucide="${idx === state.music.currentTrackIndex ? 'music' : 'play'}" class="w-4 h-4 ${track.thumb ? 'text-white' : 'text-gray-400'} group-hover:text-white transition drop-shadow-md"></i>`
                                 }
                             </div>
                         </div>
-                        <div class="flex-1 min-w-0"><h4 class="text-sm font-semibold text-white truncate">${track.title}</h4><p class="text-xs text-gray-400 truncate">${track.artist}</p></div>
-                        ${track.isCustom ? `<button onclick="event.stopPropagation(); logic.removeTrack(${idx})" class="p-2 text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 z-20"><i data-lucide="x" class="w-4 h-4"></i></button>` : ''}
+                        <div class="flex-1 min-w-0"><h4 class="text-sm font-semibold text-white truncate">${track.title}</h4><p class="text-[10px] text-gray-400 truncate">${track.artist || 'Unknown'}</p></div>
+                        ${track.isCustom ? `<button onclick="event.stopPropagation(); libraryManager.removeItem('${track.id}')" class="p-2 text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 z-20"><i data-lucide="x" class="w-4 h-4"></i></button>` : ''}
                     </div>`).join('');
                 lucide.createIcons();
             }
         };
+        window.ui = ui;
+
+        // ==========================================
+        // AUTH & USER MANAGEMENT (Firestore)
+        // ==========================================
+        const authManager = {
+            async init() {
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (e) { console.error("Auth init error:", e); }
+            },
+            async checkExistingSession() {
+                if (!firebaseUid) return;
+                try {
+                    const sessionRef = doc(db, 'artifacts', appId, 'users', firebaseUid, 'settings', 'profile');
+                    const sessionSnap = await getDoc(sessionRef);
+                    if (sessionSnap.exists() && sessionSnap.data().username) {
+                        const accountRef = doc(db, 'artifacts', appId, 'public', 'data', 'accounts', sessionSnap.data().username);
+                        const accountSnap = await getDoc(accountRef);
+                        if (accountSnap.exists()) {
+                            this.setLoggedIn(sessionSnap.data().username, accountSnap.data());
+                            return;
+                        }
+                    }
+                } catch (e) { console.error("Session check error", e); }
+                document.getElementById('auth-overlay').classList.remove('hidden', 'opacity-0');
+            },
+            // FIX: Sanitize the username properly — allow letters, digits, underscores, hyphens
+            sanitize(raw) {
+                return raw.replace(/[^a-zA-Z0-9_-]/g, '');
+            },
+            async login() {
+                const rawU = document.getElementById('auth-username').value.trim();
+                const u = this.sanitize(rawU);
+                const p = document.getElementById('auth-password').value;
+                const err = document.getElementById('auth-error');
+
+                err.classList.remove('hidden');
+                err.style.color = '';
+
+                if (!u || !p) { err.textContent = "Please enter Custom ID and password."; err.style.color = '#f87171'; return; }
+                // Only warn if sanitization actually changed something meaningful
+                if (rawU.length > 0 && u !== rawU) { err.textContent = "ID can only contain letters, numbers, _ and -."; err.style.color = '#f87171'; return; }
+                if (!firebaseUid) { err.textContent = "Connecting to server... Please wait."; return; }
+
+                try {
+                    err.textContent = "Logging in..."; err.style.color = '';
+                    const accountRef = doc(db, 'artifacts', appId, 'public', 'data', 'accounts', u);
+                    const accountSnap = await getDoc(accountRef);
+
+                    if (accountSnap.exists()) {
+                        if (accountSnap.data().password === p) {
+                            await setDoc(doc(db, 'artifacts', appId, 'users', firebaseUid, 'settings', 'profile'), { username: u });
+                            this.setLoggedIn(u, accountSnap.data());
+                        } else {
+                            err.textContent = "Incorrect password."; err.style.color = '#f87171';
+                        }
+                    } else {
+                        err.textContent = "Account not found. Click 'Create ID'."; err.style.color = '#f87171';
+                    }
+                } catch (e) {
+                    console.error("Login Error:", e);
+                    err.textContent = "Network error. Firebase may be unavailable."; err.style.color = '#f87171';
+                }
+            },
+            async signup() {
+                const rawU = document.getElementById('auth-username').value.trim();
+                const u = this.sanitize(rawU);
+                const p = document.getElementById('auth-password').value;
+                const gender = document.querySelector('input[name="auth-gender"]:checked').value;
+                const err = document.getElementById('auth-error');
+
+                err.classList.remove('hidden');
+                err.style.color = '';
+
+                if (!u || !p) { err.textContent = "Please fill all fields."; err.style.color = '#f87171'; return; }
+                if (rawU.length > 0 && u !== rawU) { err.textContent = "ID can only contain letters, numbers, _ and -."; err.style.color = '#f87171'; return; }
+                if (u.length < 3) { err.textContent = "ID must be at least 3 characters."; err.style.color = '#f87171'; return; }
+                if (!firebaseUid) { err.textContent = "Connecting to server... Please wait."; return; }
+
+                try {
+                    err.textContent = "Creating ID...";
+                    const accountRef = doc(db, 'artifacts', appId, 'public', 'data', 'accounts', u);
+                    const accountSnap = await getDoc(accountRef);
+
+                    if (accountSnap.exists()) {
+                        err.textContent = "Custom ID already taken."; err.style.color = '#f87171'; return;
+                    }
+
+                    // FIX: Generate a truly randomized gender-appropriate avatar
+                    const avatar = avatarGen.generate(u, gender);
+                    const data = { password: p, gender, avatar, createdAt: Date.now() };
+
+                    await setDoc(accountRef, data);
+                    await setDoc(doc(db, 'artifacts', appId, 'users', firebaseUid, 'settings', 'profile'), { username: u });
+
+                    // Add default items
+                    const libRef = collection(db, 'artifacts', appId, 'public', 'data', 'lib_' + u);
+                    await setDoc(doc(libRef, 'default-v1'), {
+                        id: 'default-v1', type: 'youtube', title: 'Lofi Girl - beats to relax/study to',
+                        url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk', thumb: 'https://img.youtube.com/vi/jfKfPfyJRdk/maxresdefault.jpg',
+                        duration: 'Live', isCustom: true, ytId: 'jfKfPfyJRdk', mediaClass: 'video', createdAt: Date.now()
+                    });
+                    await setDoc(doc(libRef, 'default-m1'), {
+                        id: 'default-m1', type: 'youtube', title: 'Synthwave Radio', artist: 'Nightride FM',
+                        url: 'https://www.youtube.com/watch?v=UedTcufyrHc', duration: 'Live',
+                        thumb: 'https://img.youtube.com/vi/UedTcufyrHc/maxresdefault.jpg',
+                        isCustom: true, ytId: 'UedTcufyrHc', mediaClass: 'music', createdAt: Date.now() + 1
+                    });
+
+                    this.setLoggedIn(u, data);
+                } catch (e) {
+                    console.error("Signup Error:", e);
+                    err.textContent = "Error creating account. Try again."; err.style.color = '#f87171';
+                }
+            },
+            setLoggedIn(username, data) {
+                state.user = { username, avatar: data.avatar, gender: data.gender };
+
+                document.getElementById('auth-overlay').classList.add('opacity-0');
+                setTimeout(() => document.getElementById('auth-overlay').classList.add('hidden'), 500);
+
+                document.getElementById('user-profile-badge').classList.remove('hidden');
+                document.getElementById('user-profile-badge').classList.add('flex');
+                document.getElementById('user-avatar').src = data.avatar;
+                document.getElementById('user-name-display').textContent = username;
+
+                ui.showToast(`Welcome back, ${username}!`, 'success');
+                libraryManager.listen(username);
+            },
+            logout() {
+                if (!firebaseUid) return;
+                setDoc(doc(db, 'artifacts', appId, 'users', firebaseUid, 'settings', 'profile'), { username: null }).then(() => {
+                    globalUnsubscribes.forEach(unsub => unsub());
+                    globalUnsubscribes = [];
+                    state.user = { username: null, avatar: null, gender: null };
+                    state.library = []; state.playlist = [];
+                    ui.renderLibrary(); ui.renderPlaylist();
+                    document.getElementById('user-profile-badge').classList.add('hidden');
+                    document.getElementById('auth-overlay').classList.remove('hidden');
+                    setTimeout(() => document.getElementById('auth-overlay').classList.remove('opacity-0'), 10);
+                });
+            }
+        };
+        window.authManager = authManager;
+
+        // ==========================================
+        // CLOUD LIBRARY SYNC (Firestore)
+        // ==========================================
+        const libraryManager = {
+            listen(username) {
+                if (!firebaseUid) return;
+                const libRef = collection(db, 'artifacts', appId, 'public', 'data', 'lib_' + username);
+                const unsub = onSnapshot(libRef, (snapshot) => {
+                    const items = [];
+                    snapshot.forEach(d => items.push({ ...d.data(), id: d.id }));
+                    items.sort((a, b) => b.createdAt - a.createdAt);
+
+                    state.library = items.filter(i => i.mediaClass === 'video');
+                    state.playlist = items.filter(i => i.mediaClass === 'music');
+
+                    ui.renderLibrary(); ui.renderPlaylist();
+
+                    if (state.library.length > 0 && !state.video.currentUrl) {
+                        engine.loadVideo(state.library[0].url, state.library[0].type, state.library[0].ytId || '');
+                    }
+                    if (state.playlist.length > 0 && !state.music.currentUrl) {
+                        musicEngine.loadTrack(0, false);
+                    }
+                }, (error) => console.error("Library sync error", error));
+                globalUnsubscribes.push(unsub);
+            },
+            async addItem(item, mediaClass) {
+                if (!state.user.username) return;
+                const id = 'item_' + Date.now();
+                const libRef = doc(db, 'artifacts', appId, 'public', 'data', 'lib_' + state.user.username, id);
+                await setDoc(libRef, { ...item, id, mediaClass, createdAt: Date.now() });
+                ui.showToast('Saved to Cloud Library', 'success');
+            },
+            async removeItem(id) {
+                if (!state.user.username) return;
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'lib_' + state.user.username, id));
+            }
+        };
+        window.libraryManager = libraryManager;
 
         // ==========================================
         // SEARCH ENGINE
         // ==========================================
         const searchEngine = {
-            input: document.getElementById('search-input'), resultsContainer: document.getElementById('search-results'), timeout: null,
+            input: document.getElementById('seach-input'),
+            resultsContainer: document.getElementById('search-results'),
+            timeout: null,
             providers: [
                 { type: 'piped', base: 'https://pipedapi.kavin.rocks' },
-                { type: 'piped', base: 'https://api.piped.projectsegfau.lt' },
-                { type: 'invidious', base: 'https://inv.nadeko.net' },
-                { type: 'invidious', base: 'https://invidious.fdn.fr' }
+                { type: 'invidious', base: 'https://inv.nadeko.net' }
             ],
             init() {
                 this.input.addEventListener('input', (e) => {
-                    clearTimeout(this.timeout); const q = e.target.value.trim();
+                    clearTimeout(this.timeout);
+                    const q = e.target.value.trim();
                     if (q.length < 2) { this.resultsContainer.classList.add('hidden'); return; }
                     this.timeout = setTimeout(() => this.performSearch(q), 600);
                 });
-                document.addEventListener('click', (e) => { if (!document.getElementById('search-container').contains(e.target)) this.resultsContainer.classList.add('hidden'); });
+                document.addEventListener('click', (e) => {
+                    if (!document.getElementById('search-container').contains(e.target)) this.resultsContainer.classList.add('hidden');
+                });
+            },
+            esc(str = '') {
+                return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            },
+            normalizeResult(item) {
+                const ytId = ytHelper.extractId(item.url || '') || item.id || item.videoId || item.videoIdOrNull;
+                if (!ytId) return null;
+                const title = item.title || item.name || 'YouTube video';
+                const uploader = item.uploaderName || item.author || item.uploader || 'YouTube';
+                const thumb = item.thumbnail || item.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
+                const duration = Number.isFinite(item.duration) ? item.duration : (Number.isFinite(item.lengthSeconds) ? item.lengthSeconds : -1);
+                return { ytId, title, uploader, thumb, duration };
+            },
+            esc(str = '') {
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            },
+            normalizeResult(item) {
+                const ytId = ytHelper.extractId(item.url || '') || item.id || item.videoId || item.videoIdOrNull;
+                if (!ytId) return null;
+                const title = item.title || item.name || 'YouTube video';
+                const uploader = item.uploaderName || item.author || item.uploader || 'YouTube';
+                const thumb = item.thumbnail || item.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
+                const duration = Number.isFinite(item.duration) ? item.duration : (Number.isFinite(item.lengthSeconds) ? item.lengthSeconds : -1);
+                return { ytId, title, uploader, thumb, duration };
+            },
+            async fetchPiped(base, query) {
+                const res = await fetch(`${base}/search?q=${encodeURIComponent(query)}&filter=videos`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return (data?.items || []).map(item => this.normalizeResult(item)).filter(Boolean);
+            },
+            async fetchInvidious(base, query) {
+                const res = await fetch(`${base}/api/v1/search?q=${encodeURIComponent(query)}&type=video`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return (Array.isArray(data) ? data : []).map(item => this.normalizeResult(item)).filter(Boolean);
+            },
+            esc(str = '') {
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            },
+            normalizeResult(item) {
+                const ytId = ytHelper.extractId(item.url || '') || item.id || item.videoId || item.videoIdOrNull;
+                if (!ytId) return null;
+                const title = item.title || item.name || 'YouTube video';
+                const uploader = item.uploaderName || item.author || item.uploader || 'YouTube';
+                const thumb = item.thumbnail || item.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
+                const duration = Number.isFinite(item.duration) ? item.duration : (Number.isFinite(item.lengthSeconds) ? item.lengthSeconds : -1);
+                return { ytId, title, uploader, thumb, duration };
+            },
+            async fetchPiped(base, query) {
+                const res = await fetch(`${base}/search?q=${encodeURIComponent(query)}&filter=videos`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return (data?.items || []).map(item => this.normalizeResult(item)).filter(Boolean);
+            },
+            async fetchInvidious(base, query) {
+                const res = await fetch(`${base}/api/v1/search?q=${encodeURIComponent(query)}&type=video`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return (Array.isArray(data) ? data : []).map(item => this.normalizeResult(item)).filter(Boolean);
+            },
+            esc(str = '') {
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            },
+            normalizeResult(item) {
+                const ytId = ytHelper.extractId(item.url || '') || item.id || item.videoId || item.videoIdOrNull;
+                if (!ytId) return null;
+                const title = item.title || item.name || 'YouTube video';
+                const uploader = item.uploaderName || item.author || item.uploader || 'YouTube';
+                const thumb = item.thumbnail || item.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
+                const duration = Number.isFinite(item.duration) ? item.duration : (Number.isFinite(item.lengthSeconds) ? item.lengthSeconds : -1);
+                return { ytId, title, uploader, thumb, duration };
+            },
+            async fetchPiped(base, query) {
+                const res = await fetch(`${base}/search?q=${encodeURIComponent(query)}&filter=videos`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return (data?.items || []).map(item => this.normalizeResult(item)).filter(Boolean);
+            },
+            async fetchInvidious(base, query) {
+                const res = await fetch(`${base}/api/v1/search?q=${encodeURIComponent(query)}&type=video`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return (Array.isArray(data) ? data : []).map(item => this.normalizeResult(item)).filter(Boolean);
             },
             esc(str = '') {
                 return String(str)
@@ -691,35 +1055,35 @@
             },
             async performSearch(query) {
                 const directYtId = ytHelper.extractId(query);
-                if(directYtId) { this.playResult(directYtId, 'Pasted YouTube Stream', `https://img.youtube.com/vi/${directYtId}/mqdefault.jpg`); return; }
+                if (directYtId) {
+                    this.playResult(directYtId, 'Pasted YouTube Stream', `https://img.youtube.com/vi/${directYtId}/mqdefault.jpg`);
+                    return;
+                }
 
-                this.resultsContainer.innerHTML = `<div class="p-4 text-center text-xs text-gray-400"><i data-lucide="loader-2" class="w-5 h-5 animate-spin mx-auto mb-2"></i> Searching YouTube...</div>`;
-                this.resultsContainer.classList.remove('hidden'); lucide.createIcons();
+                this.resultsContainer.innerHTML = `<div class="p-4 text-center text-xs text-gray-400"><i data-lucide="loader-2" class="w-5 h-5 animate-spin mx-auto mb-2"></i> Searching...</div>`;
+                this.resultsContainer.classList.remove('hidden');
+                lucide.createIcons();
 
                 let results = [];
-                try {
-                    const res = await fetch(`/api/search-youtube?q=${encodeURIComponent(query)}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        results = Array.isArray(data?.items) ? data.items : [];
-                    }
-                } catch (_e) {}
-
                 for (const provider of this.providers) {
-                    if (results.length > 0) break;
                     try {
-                        results = provider.type === 'piped'
-                            ? await this.fetchPiped(provider.base, query)
-                            : await this.fetchInvidious(provider.base, query);
+                        const res = await fetch(provider.type === 'piped'
+                            ? `${provider.base}/search?q=${encodeURIComponent(query)}&filter=videos`
+                            : `${provider.base}/api/v1/search?q=${encodeURIComponent(query)}&type=video`);
+                        if (!res.ok) continue;
+                        const data = await res.json();
+                        results = (provider.type === 'piped' ? data.items || [] : Array.isArray(data) ? data : [])
+                            .map(item => this.normalizeResult(item)).filter(Boolean);
                         if (results.length > 0) break;
-                    } catch(e) { continue; }
+                    } catch (e) { continue; }
                 }
 
                 if (results.length === 0) {
-                    this.resultsContainer.innerHTML = `<div class="p-4 text-center text-xs text-gray-400">No results found</div>`; return;
+                    this.resultsContainer.innerHTML = `<div class="p-4 text-center text-xs text-gray-400">No results found</div>`;
+                    return;
                 }
 
-                const html = results.slice(0, 6).map(item => {
+                this.resultsContainer.innerHTML = results.slice(0, 6).map(item => {
                     const encodedTitle = encodeURIComponent(item.title || 'YouTube video');
                     const encodedThumb = encodeURIComponent(item.thumb || `https://img.youtube.com/vi/${item.ytId}/mqdefault.jpg`);
                     return `
@@ -732,46 +1096,66 @@
                             <i data-lucide="play-circle" class="w-4 h-4 text-gray-400 flex-shrink-0"></i>
                         </div>`;
                 }).join('');
-                
-                this.resultsContainer.innerHTML = html; lucide.createIcons();
+                lucide.createIcons();
+            },
+            playResultFromEncoded(ytId, encodedTitle, encodedThumb) {
+                this.playResult(ytId, decodeURIComponent(encodedTitle), decodeURIComponent(encodedThumb));
+            },
+            playResultFromEncoded(ytId, encodedTitle, encodedThumb) {
+                this.playResult(ytId, decodeURIComponent(encodedTitle), decodeURIComponent(encodedThumb));
+            },
+            playResultFromEncoded(ytId, encodedTitle, encodedThumb) {
+                this.playResult(ytId, decodeURIComponent(encodedTitle), decodeURIComponent(encodedThumb));
+            },
+            playResultFromEncoded(ytId, encodedTitle, encodedThumb) {
+                this.playResult(ytId, decodeURIComponent(encodedTitle), decodeURIComponent(encodedThumb));
             },
             playResultFromEncoded(ytId, encodedTitle, encodedThumb) {
                 this.playResult(ytId, decodeURIComponent(encodedTitle), decodeURIComponent(encodedThumb));
             },
             playResult(ytId, title, thumb) {
-                this.resultsContainer.classList.add('hidden'); this.input.value = '';
+                this.resultsContainer.classList.add('hidden');
+                this.input.value = '';
                 const url = `https://www.youtube.com/watch?v=${ytId}`;
-                
+                const item = { type: 'youtube', title, url, ytId, thumb, duration: 'YouTube', isCustom: true };
+
                 if (state.activeView === 'view-video') {
-                    mockLibrary.unshift({ id: 'yt-' + Date.now(), type: 'youtube', title: title, url: url, ytId: ytId, thumb: thumb, duration: 'YouTube', isCustom: true });
-                    ui.renderLibrary(); logic.saveUserMedia(); engine.loadVideo(url, 'youtube', ytId);
+                    libraryManager.addItem(item, 'video');
+                    engine.loadVideo(url, 'youtube', ytId);
                 } else {
-                    mockPlaylist.unshift({ title: title, artist: 'YouTube Audio', url: url, ytId: ytId, thumb: thumb, duration: 'YouTube', isCustom: true, type: 'youtube' });
-                    ui.renderPlaylist(); logic.saveUserMedia(); musicEngine.loadTrack(0);
+                    item.artist = 'YouTube Audio';
+                    libraryManager.addItem(item, 'music');
+                    // loadTrack will pick it up after library updates
                 }
             }
         };
+        window.searchEngine = searchEngine;
 
         // ==========================================
-        // VIDEO ENGINE + TELEPARTY SYNC
+        // VIDEO ENGINE — FIXED YT PLAYER
         // ==========================================
         const engine = {
-            v: document.getElementById('main-video'), ytPlayer: null, ytContainer: document.getElementById('yt-video-container'),
+            v: document.getElementById('main-video'),
+            // FIX: separate ytPlayer instance for video (not shared with music engine)
+            ytPlayer: null,
+            ytPlayerReady: false,
+            ytContainer: document.getElementById('yt-video-container'),
+
             init() {
                 document.getElementById('btn-play-pause').addEventListener('click', () => this.togglePlay());
                 document.getElementById('btn-rewind').addEventListener('click', () => this.seek(-10));
                 document.getElementById('btn-forward').addEventListener('click', () => this.seek(10));
                 document.getElementById('btn-mute').addEventListener('click', () => this.toggleMute());
                 document.getElementById('btn-fullscreen').addEventListener('click', () => this.toggleFullscreen());
-                
+
                 const progCont = document.getElementById('progress-container');
                 progCont.addEventListener('click', (e) => {
                     if (this.isRestricted()) return;
                     const dur = state.video.type === 'youtube' && this.ytPlayer ? this.ytPlayer.getDuration() : this.v.duration;
-                    if(!isFinite(dur)) return;
+                    if (!isFinite(dur)) return;
                     const pos = ((e.clientX - progCont.getBoundingClientRect().left) / progCont.getBoundingClientRect().width) * dur;
-                    
-                    if(state.video.type === 'youtube') { this.ytPlayer.seekTo(pos); } else { this.v.currentTime = pos; }
+                    if (state.video.type === 'youtube') { this.ytPlayer.seekTo(pos); }
+                    else { this.v.currentTime = pos; }
                     logic.emitSync('seek', { time: pos });
                 });
 
@@ -780,7 +1164,10 @@
                 this.v.addEventListener('play', () => this.onPlay(this.v.currentTime));
                 this.v.addEventListener('pause', () => this.onPause(this.v.currentTime));
                 this.v.addEventListener('timeupdate', () => this.onTimeUpdate(this.v.currentTime, this.v.duration));
-                this.v.addEventListener('loadedmetadata', () => { document.getElementById('time-total').textContent = ui.formatTime(this.v.duration); document.getElementById('video-loader').classList.add('hidden'); });
+                this.v.addEventListener('loadedmetadata', () => {
+                    document.getElementById('time-total').textContent = ui.formatTime(this.v.duration);
+                    document.getElementById('video-loader').classList.add('hidden');
+                });
                 this.v.addEventListener('waiting', () => document.getElementById('video-loader').classList.remove('hidden'));
                 this.v.addEventListener('playing', () => document.getElementById('video-loader').classList.add('hidden'));
 
@@ -788,158 +1175,348 @@
                 document.addEventListener('webkitfullscreenchange', () => this.handleFullscreenChange());
 
                 setInterval(() => {
-                    if(state.activeView === 'view-video' && state.video.type === 'youtube' && state.video.isPlaying && this.ytPlayer && this.ytPlayer.getCurrentTime) {
-                        this.onTimeUpdate(this.ytPlayer.getCurrentTime(), this.ytPlayer.getDuration());
+                    if (state.activeView === 'view-video' && state.video.type === 'youtube' && state.video.isPlaying && this.ytPlayer && this.ytPlayerReady) {
+                        try { this.onTimeUpdate(this.ytPlayer.getCurrentTime(), this.ytPlayer.getDuration()); } catch (e) {}
                     }
                 }, 250);
+            },
 
-                this.loadVideo(mockLibrary[0].url, mockLibrary[0].type, mockLibrary[0].ytId);
-            },
             getCurrentTime() {
-                return state.video.type === 'youtube' && this.ytPlayer && this.ytPlayer.getCurrentTime ? this.ytPlayer.getCurrentTime() : this.v.currentTime;
+                if (state.video.type === 'youtube' && this.ytPlayer && this.ytPlayerReady) {
+                    try { return this.ytPlayer.getCurrentTime(); } catch (e) { return 0; }
+                }
+                return this.v.currentTime;
             },
+
             onPlay(time) {
                 state.video.isPlaying = true;
-                document.getElementById('icon-play').classList.add('hidden'); document.getElementById('icon-pause').classList.remove('hidden');
-                document.getElementById('video-status-text').textContent = "Playing"; document.getElementById('video-status-text').classList.remove('animate-pulse');
-                this.resetHideTimer(); 
+                document.getElementById('icon-play').classList.add('hidden');
+                document.getElementById('icon-pause').classList.remove('hidden');
+                document.getElementById('video-status-text').textContent = "Playing";
+                document.getElementById('video-status-text').classList.remove('animate-pulse');
+                this.resetHideTimer();
                 logic.emitSync('play', { time });
             },
             onPause(time) {
                 state.video.isPlaying = false;
-                document.getElementById('icon-play').classList.remove('hidden'); document.getElementById('icon-pause').classList.add('hidden');
+                document.getElementById('icon-play').classList.remove('hidden');
+                document.getElementById('icon-pause').classList.add('hidden');
                 document.getElementById('video-status-text').textContent = "Paused";
-                this.showControls(); 
+                this.showControls();
                 logic.emitSync('pause', { time });
             },
             onTimeUpdate(curr, dur) {
                 if (!dur || !isFinite(dur)) {
-                    document.getElementById('time-current').textContent = "Live"; document.getElementById('time-total').textContent = "Live";
+                    document.getElementById('time-current').textContent = "Live";
+                    document.getElementById('time-total').textContent = "Live";
                     return;
                 }
                 const pct = (curr / dur) * 100;
-                document.getElementById('progress-filled').style.width = `${pct}%`; document.getElementById('progress-thumb').style.left = `${pct}%`;
+                document.getElementById('progress-filled').style.width = `${pct}%`;
+                document.getElementById('progress-thumb').style.left = `${pct}%`;
                 document.getElementById('time-current').textContent = ui.formatTime(curr);
-                
-                if(state.video.type !== 'youtube' && this.v.buffered.length > 0) {
+
+                if (state.video.type !== 'youtube' && this.v.buffered.length > 0) {
                     document.getElementById('progress-buffer').style.width = `${(this.v.buffered.end(this.v.buffered.length - 1) / dur) * 100}%`;
-                } else if (state.video.type === 'youtube' && this.ytPlayer && this.ytPlayer.getVideoLoadedFraction) {
-                    document.getElementById('progress-buffer').style.width = `${this.ytPlayer.getVideoLoadedFraction() * 100}%`;
+                } else if (state.video.type === 'youtube' && this.ytPlayer && this.ytPlayerReady) {
+                    try { document.getElementById('progress-buffer').style.width = `${this.ytPlayer.getVideoLoadedFraction() * 100}%`; } catch (e) {}
                 }
             },
 
-            isRestricted() { if (state.teleparty.inRoom && state.teleparty.role === 'viewer') { ui.showToast('Host is controlling playback', 'error'); return true; } return false; },
-            
-            togglePlay() { 
-                if(this.isRestricted()) return; 
-                if(state.video.type === 'youtube') { state.video.isPlaying ? this.ytPlayer.pauseVideo() : this.ytPlayer.playVideo(); }
-                else { state.video.isPlaying ? this.v.pause() : this.v.play().catch(e => { if (e && e.name !== 'AbortError') console.warn('Play prevented:', e.name) }); }
+            isRestricted() {
+                if (state.teleparty.inRoom && state.teleparty.role === 'viewer') {
+                    ui.showToast('Host controls playback', 'error'); return true;
+                }
+                return false;
+            },
+
+            togglePlay() {
+                if (this.isRestricted()) return;
+                if (state.video.type === 'youtube' && this.ytPlayer && this.ytPlayerReady) {
+                    state.video.isPlaying ? this.ytPlayer.pauseVideo() : this.ytPlayer.playVideo();
+                } else {
+                    state.video.isPlaying ? this.v.pause() : this.v.play().catch(e => { if (e && e.name !== 'AbortError') console.warn('Play prevented:', e.name); });
+                }
             },
             forcePlay() {
-                if(state.video.type === 'youtube' && this.ytPlayer) this.ytPlayer.playVideo();
-                else this.v.play().catch(e => { if (e && e.name !== 'AbortError') console.warn('Force play prevented:', e.name) });
+                if (state.video.type === 'youtube' && this.ytPlayer && this.ytPlayerReady) this.ytPlayer.playVideo();
+                else this.v.play().catch(() => {});
             },
             forcePause() {
-                if(state.video.type === 'youtube' && this.ytPlayer) this.ytPlayer.pauseVideo();
+                if (state.video.type === 'youtube' && this.ytPlayer && this.ytPlayerReady) this.ytPlayer.pauseVideo();
                 else this.v.pause();
             },
-            seek(amount) { 
-                if(this.isRestricted()) return false;
+            seek(amount) {
+                if (this.isRestricted()) return false;
                 let newTime;
-                if(state.video.type === 'youtube') {
-                    if(!this.ytPlayer || !isFinite(this.ytPlayer.getDuration())) return false;
-                    newTime = this.ytPlayer.getCurrentTime() + amount;
-                    this.ytPlayer.seekTo(newTime);
+                if (state.video.type === 'youtube' && this.ytPlayer && this.ytPlayerReady) {
+                    try {
+                        if (!isFinite(this.ytPlayer.getDuration())) return false;
+                        newTime = this.ytPlayer.getCurrentTime() + amount;
+                        this.ytPlayer.seekTo(newTime);
+                    } catch (e) { return false; }
                 } else {
-                    if(!isFinite(this.v.duration)) return false;
-                    this.v.currentTime += amount; 
+                    if (!isFinite(this.v.duration)) return false;
+                    this.v.currentTime += amount;
                     newTime = this.v.currentTime;
                 }
-                ui.showToast(`Seeked ${amount>0?'+':''}${amount}s`);
+                ui.showToast(`Seeked ${amount > 0 ? '+' : ''}${amount}s`);
                 logic.emitSync('seek', { time: newTime });
                 return true;
             },
             forceSeek(time) {
-                if(!isFinite(time)) return;
-                if(state.video.type === 'youtube' && this.ytPlayer) this.ytPlayer.seekTo(time);
-                else this.v.currentTime = time;
+                if (!isFinite(time)) return;
+                if (state.video.type === 'youtube' && this.ytPlayer && this.ytPlayerReady) {
+                    try { this.ytPlayer.seekTo(time); } catch (e) {}
+                } else {
+                    this.v.currentTime = time;
+                }
             },
             toggleMute() {
                 state.video.isMuted = !state.video.isMuted;
-                if(state.video.type === 'youtube') { state.video.isMuted ? this.ytPlayer.mute() : this.ytPlayer.unMute(); }
-                else { this.v.muted = state.video.isMuted; }
-                if(state.video.isMuted) { document.getElementById('icon-vol-up').classList.add('hidden'); document.getElementById('icon-vol-mute').classList.remove('hidden'); }
-                else { document.getElementById('icon-vol-up').classList.remove('hidden'); document.getElementById('icon-vol-mute').classList.add('hidden'); }
+                if (state.video.type === 'youtube' && this.ytPlayer && this.ytPlayerReady) {
+                    state.video.isMuted ? this.ytPlayer.mute() : this.ytPlayer.unMute();
+                } else {
+                    this.v.muted = state.video.isMuted;
+                }
+                if (state.video.isMuted) {
+                    document.getElementById('icon-vol-up').classList.add('hidden');
+                    document.getElementById('icon-vol-mute').classList.remove('hidden');
+                } else {
+                    document.getElementById('icon-vol-up').classList.remove('hidden');
+                    document.getElementById('icon-vol-mute').classList.add('hidden');
+                }
             },
-
             setQuality(val) {
                 const labels = { '-1': 'AUTO', '1080': '1080p', '720': '720p' };
                 document.getElementById('quality-badge').textContent = labels[val];
                 document.getElementById('quality-menu').classList.add('hidden');
-                if (state.video.type === 'hls' && state.video.hls) {
-                    state.video.hls.currentLevel = val === '-1' ? -1 : (val === '1080' ? 2 : 1);
+                if (state.video.type === 'hls' && state.video.hls) state.video.hls.currentLevel = val === '-1' ? -1 : (val === '1080' ? 2 : 1);
+            },
+            handleError153Fallback() {
+                ytHelper.hideEmbedError();
+                const fallback = state.library.find(v => v.ytId !== state.video.currentYtId);
+                if (fallback) { this.loadVideo(fallback.url, fallback.type, fallback.ytId || ''); }
+            },
+
+            // ==========================================
+            // FIX: Robust YouTube player lifecycle
+            // Creates player once, reuses it for subsequent loads
+            // ==========================================
+            loadVideo(url, type, ytId, isSync = false) {
+                if (!isSync && this.isRestricted()) { ui.showToast('Viewers cannot change the video.', 'error'); return; }
+
+                ytHelper.hideEmbedError();
+                document.getElementById('video-loader').classList.remove('hidden');
+                document.getElementById('video-status-text').textContent = "Buffering...";
+                document.getElementById('video-status-text').classList.add('animate-pulse');
+
+                const normalizedUrl = mediaHelper.normalizeUrl(url);
+                state.video.type = type;
+                state.video.currentYtId = ytId || null;
+                state.video.currentUrl = normalizedUrl;
+
+                if (!isSync) { logic.emitSync('load', { video: { url: normalizedUrl, type, ytId } }); }
+
+                // Clean up native player streams
+                if (state.video.hls) { state.video.hls.destroy(); state.video.hls = null; }
+                if (state.video.dash) { state.video.dash.reset(); state.video.dash = null; }
+
+                if (type === 'youtube' && ytId) {
+                    // Hide native video, show YT container
+                    this.v.pause();
+                    this.v.src = '';
+                    this.v.classList.add('opacity-0');
+                    this.ytContainer.classList.remove('hidden');
+
+                    ytHelper.execute(() => {
+                        if (!this.ytPlayer) {
+                            // First time: create the player
+                            this.ytPlayerReady = false;
+                            this.ytPlayer = new YT.Player('yt-video-placeholder', {
+                                videoId: ytId,
+                                playerVars: {
+                                    autoplay: 1,
+                                    controls: 0,
+                                    disablekb: 1,
+                                    rel: 0,
+                                    modestbranding: 1,
+                                    playsinline: 1,
+                                    enablejsapi: 1,
+                                    origin: window.location.origin,
+                                    fs: 0
+                                },
+                                events: {
+                                    onReady: (e) => {
+                                        this.ytPlayerReady = true;
+                                        e.target.playVideo();
+                                        document.getElementById('video-loader').classList.add('hidden');
+                                    },
+                                    onStateChange: (e) => {
+                                        if (e.data === YT.PlayerState.PLAYING) {
+                                            this.onPlay(this.ytPlayer.getCurrentTime());
+                                        } else if (e.data === YT.PlayerState.PAUSED) {
+                                            this.onPause(this.ytPlayer.getCurrentTime());
+                                        } else if (e.data === YT.PlayerState.ENDED) {
+                                            this.onPause(0);
+                                        } else if (e.data === YT.PlayerState.BUFFERING) {
+                                            document.getElementById('video-loader').classList.remove('hidden');
+                                        } else if (e.data === YT.PlayerState.CUED) {
+                                            document.getElementById('video-loader').classList.add('hidden');
+                                        }
+                                    },
+                                    onError: (e) => {
+                                        ytHelper.handleError(e.data, ytId, null);
+                                    }
+                                }
+                            });
+                        } else {
+                            // Player already exists — load the new video into it
+                            // FIX: use cueVideoById then playVideo to avoid timing issues
+                            if (this.ytPlayerReady) {
+                                this.ytPlayer.loadVideoById({ videoId: ytId, suggestedQuality: 'default' });
+                                document.getElementById('video-loader').classList.add('hidden');
+                            } else {
+                                // Not ready yet — queue the load
+                                const waitAndLoad = setInterval(() => {
+                                    if (this.ytPlayerReady) {
+                                        clearInterval(waitAndLoad);
+                                        this.ytPlayer.loadVideoById({ videoId: ytId, suggestedQuality: 'default' });
+                                        document.getElementById('video-loader').classList.add('hidden');
+                                    }
+                                }, 200);
+                            }
+                        }
+                    });
+
+                } else {
+                    // Native/HLS/DASH: hide YT container, show video
+                    this.ytContainer.classList.add('hidden');
+                    if (this.ytPlayer && this.ytPlayerReady) {
+                        try { this.ytPlayer.pauseVideo(); } catch (e) {}
+                    }
+                    this.v.classList.remove('opacity-0');
+
+                    if (type === 'hls' && Hls.isSupported()) {
+                        const hls = new Hls({ maxBufferLength: 30 });
+                        hls.loadSource(normalizedUrl);
+                        hls.attachMedia(this.v);
+                        state.video.hls = hls;
+                    } else if (type === 'dash') {
+                        if (window.dashjs && window.dashjs.MediaPlayer) {
+                            const dashPlayer = window.dashjs.MediaPlayer().create();
+                            dashPlayer.initialize(this.v, normalizedUrl, true);
+                            state.video.dash = dashPlayer;
+                        } else { this.v.src = normalizedUrl; }
+                    } else if (['mp4', 'webm', 'native'].includes(type)) {
+                        this.v.src = normalizedUrl;
+                    } else {
+                        ui.showToast('Unsupported format', 'error');
+                        document.getElementById('video-loader').classList.add('hidden');
+                        document.getElementById('video-status-text').textContent = "Unavailable";
+                        return;
+                    }
+
+                    this.v.currentTime = 0;
+                    const playPromise = this.v.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(e => {
+                            if (e && e.name === 'AbortError') return;
+                            state.video.isPlaying = false;
+                            document.getElementById('icon-play').classList.remove('hidden');
+                            document.getElementById('icon-pause').classList.add('hidden');
+                            document.getElementById('video-status-text').textContent = "Paused";
+                        });
+                    }
                 }
             },
 
-            handleError153Fallback() {
-                ytHelper.hideEmbedError();
-                const fallback = mockLibrary.find(v => v.ytId !== state.video.currentYtId);
-                if(fallback) { this.loadVideo(fallback.url, fallback.type, fallback.ytId); }
+            playSmart(url, isSync = false) {
+                const normalizedUrl = mediaHelper.normalizeUrl(url);
+                const ytId = ytHelper.extractId(normalizedUrl);
+                if (ytId) {
+                    this.loadVideo(normalizedUrl, 'youtube', ytId, isSync);
+                } else {
+                    const detectedType = mediaHelper.detectType(normalizedUrl, 'native');
+                    this.loadVideo(normalizedUrl, detectedType, null, isSync);
+                }
             },
-            
+
             toggleFullscreen() {
-                const c = document.getElementById('player-container'); const isPseudo = c.classList.contains('pseudo-fullscreen');
-                if (!document.fullscreenElement && !document.webkitFullscreenElement && !isPseudo) { 
+                const c = document.getElementById('player-container');
+                const isPseudo = c.classList.contains('pseudo-fullscreen');
+                if (!document.fullscreenElement && !document.webkitFullscreenElement && !isPseudo) {
                     try {
                         let promise;
-                        if (c.requestFullscreen) { promise = c.requestFullscreen(); } else if (c.webkitRequestFullscreen) { promise = c.webkitRequestFullscreen(); }
-                        if (promise !== undefined) { promise.then(() => { this.lockOrientation(c); }).catch(e => { this.togglePseudoFullscreen(c, true); }); }
-                        else if (this.v.webkitEnterFullscreen && state.video.type !== 'youtube') { this.v.webkitEnterFullscreen(); } 
-                        else { this.togglePseudoFullscreen(c, true); }
-                    } catch(e) { this.togglePseudoFullscreen(c, true); }
-                } else { 
-                    if (document.exitFullscreen && document.fullscreenElement) { document.exitFullscreen(); } 
-                    else if (document.webkitExitFullscreen && document.webkitFullscreenElement) { document.webkitExitFullscreen(); } 
+                        if (c.requestFullscreen) { promise = c.requestFullscreen(); }
+                        else if (c.webkitRequestFullscreen) { promise = c.webkitRequestFullscreen(); }
+                        if (promise !== undefined) {
+                            promise.then(() => { this.lockOrientation(c); }).catch(() => { this.togglePseudoFullscreen(c, true); });
+                        } else if (this.v.webkitEnterFullscreen && state.video.type !== 'youtube') {
+                            this.v.webkitEnterFullscreen();
+                        } else { this.togglePseudoFullscreen(c, true); }
+                    } catch (e) { this.togglePseudoFullscreen(c, true); }
+                } else {
+                    if (document.exitFullscreen && document.fullscreenElement) { document.exitFullscreen(); }
+                    else if (document.webkitExitFullscreen && document.webkitFullscreenElement) { document.webkitExitFullscreen(); }
                     else if (isPseudo) { this.togglePseudoFullscreen(c, false); }
                 }
             },
-            lockOrientation(c) { if (screen.orientation && screen.orientation.lock) { screen.orientation.lock('landscape').catch(e => { c.classList.add('force-landscape'); }); } else { c.classList.add('force-landscape'); } },
-            unlockOrientation(c) { if (screen.orientation && screen.orientation.unlock) { screen.orientation.unlock(); } c.classList.remove('force-landscape'); },
+            lockOrientation(c) {
+                if (screen.orientation && screen.orientation.lock) {
+                    screen.orientation.lock('landscape').catch(() => { c.classList.add('force-landscape'); });
+                } else { c.classList.add('force-landscape'); }
+            },
+            unlockOrientation(c) {
+                if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+                c.classList.remove('force-landscape');
+            },
             togglePseudoFullscreen(c, enter) {
-                const header = document.getElementById('main-header'); const nav = document.getElementById('main-nav'); const viewVideo = document.getElementById('view-video');
+                const header = document.getElementById('main-header');
+                const nav = document.getElementById('main-nav');
+                const viewVideo = document.getElementById('view-video');
                 if (enter) {
-                    c.classList.add('pseudo-fullscreen'); header.style.display = 'none'; nav.style.display = 'none'; viewVideo.classList.remove('hardware-accel'); 
-                    document.getElementById('icon-fs-enter').classList.add('hidden'); document.getElementById('icon-fs-exit').classList.remove('hidden'); this.lockOrientation(c);
+                    c.classList.add('pseudo-fullscreen'); header.style.display = 'none'; nav.style.display = 'none';
+                    viewVideo.classList.remove('hardware-accel');
+                    document.getElementById('icon-fs-enter').classList.add('hidden');
+                    document.getElementById('icon-fs-exit').classList.remove('hidden');
+                    this.lockOrientation(c);
                 } else {
-                    c.classList.remove('pseudo-fullscreen'); header.style.display = ''; nav.style.display = ''; viewVideo.classList.add('hardware-accel');
-                    document.getElementById('icon-fs-enter').classList.remove('hidden'); document.getElementById('icon-fs-exit').classList.add('hidden'); this.unlockOrientation(c);
+                    c.classList.remove('pseudo-fullscreen'); header.style.display = ''; nav.style.display = '';
+                    viewVideo.classList.add('hardware-accel');
+                    document.getElementById('icon-fs-enter').classList.remove('hidden');
+                    document.getElementById('icon-fs-exit').classList.add('hidden');
+                    this.unlockOrientation(c);
                 }
             },
             handleFullscreenChange() {
                 const c = document.getElementById('player-container');
-                if (document.fullscreenElement || document.webkitFullscreenElement) { c.classList.add('rounded-none'); document.getElementById('icon-fs-enter').classList.add('hidden'); document.getElementById('icon-fs-exit').classList.remove('hidden'); } 
-                else { c.classList.remove('rounded-none'); document.getElementById('icon-fs-enter').classList.remove('hidden'); document.getElementById('icon-fs-exit').classList.add('hidden'); this.unlockOrientation(c); }
+                if (document.fullscreenElement || document.webkitFullscreenElement) {
+                    c.classList.add('rounded-none');
+                    document.getElementById('icon-fs-enter').classList.add('hidden');
+                    document.getElementById('icon-fs-exit').classList.remove('hidden');
+                } else {
+                    c.classList.remove('rounded-none');
+                    document.getElementById('icon-fs-enter').classList.remove('hidden');
+                    document.getElementById('icon-fs-exit').classList.add('hidden');
+                    this.unlockOrientation(c);
+                }
             },
             async togglePiP() {
-                if(state.video.type === 'youtube') { ui.showToast('PiP not available for YouTube', 'error'); return; }
-                try { if (document.pictureInPictureElement) { await document.exitPictureInPicture(); } else if (document.pictureInPictureEnabled && !this.v.disablePictureInPicture) { await this.v.requestPictureInPicture(); } else { ui.showToast('Picture-in-Picture not supported', 'error'); } } catch (error) { ui.showToast('Picture-in-Picture failed', 'error'); }
+                if (state.video.type === 'youtube') { ui.showToast('PiP not available for YouTube', 'error'); return; }
+                try {
+                    if (document.pictureInPictureElement) { await document.exitPictureInPicture(); }
+                    else if (document.pictureInPictureEnabled && !this.v.disablePictureInPicture) { await this.v.requestPictureInPicture(); }
+                    else { ui.showToast('Picture-in-Picture not supported', 'error'); }
+                } catch (error) { ui.showToast('Picture-in-Picture failed', 'error'); }
             },
-
             setupGestures() {
-                const layer = document.getElementById('gesture-layer'); 
-                let lastTap = 0; 
-                let tapTimer = null;
-                let startX = 0;
-                let startY = 0;
-                let isSwiping = false;
+                const layer = document.getElementById('gesture-layer');
+                let lastTap = 0, tapTimer = null, startX = 0, startY = 0, isSwiping = false;
 
                 layer.addEventListener('click', (e) => {
-                    const now = new Date().getTime();
-                    const timeDiff = now - lastTap;
-                    lastTap = now;
-
-                    if(timeDiff < 300) {
-                        // Double Tap - Seek
+                    const now = new Date().getTime(); const timeDiff = now - lastTap; lastTap = now;
+                    if (timeDiff < 300) {
                         clearTimeout(tapTimer);
                         if (e.clientX > layer.getBoundingClientRect().left + layer.getBoundingClientRect().width / 2) {
                             if (this.seek(10)) this.showRipple('right');
@@ -947,362 +1524,295 @@
                             if (this.seek(-10)) this.showRipple('left');
                         }
                     } else {
-                        // Single Tap - Toggle controls
-                        tapTimer = setTimeout(() => {
-                            state.ui.controlsVisible ? this.hideControls() : this.showControls();
-                        }, 300);
+                        tapTimer = setTimeout(() => { state.ui.controlsVisible ? this.hideControls() : this.showControls(); }, 300);
                     }
                 });
 
-                layer.addEventListener('touchstart', e => { 
-                    startX = e.changedTouches[0].screenX; 
-                    startY = e.changedTouches[0].screenY;
-                    isSwiping = false;
-                }, {passive: true});
-
+                layer.addEventListener('touchstart', e => {
+                    startX = e.changedTouches[0].screenX; startY = e.changedTouches[0].screenY; isSwiping = false;
+                }, { passive: true });
                 layer.addEventListener('touchmove', e => {
                     if (!startX || isSwiping) return;
                     const diffX = e.changedTouches[0].screenX - startX;
                     const diffY = e.changedTouches[0].screenY - startY;
-
-                    // Trigger if horizontally swiped more than 60px
                     if (Math.abs(diffX) > 60 && Math.abs(diffX) > Math.abs(diffY) && !this.isRestricted()) {
-                        if (diffX > 0) {
-                            if(this.seek(15)) this.showRipple('right');
-                        } else {
-                            if(this.seek(-15)) this.showRipple('left');
-                        }
-                        isSwiping = true;
-                        startX = 0;
+                        if (diffX > 0) { if (this.seek(15)) this.showRipple('right'); }
+                        else { if (this.seek(-15)) this.showRipple('left'); }
+                        isSwiping = true; startX = 0;
                     }
-                }, {passive: true});
-
-                layer.addEventListener('touchend', e => { 
-                    startX = 0;
-                }, {passive: true});
-
+                }, { passive: true });
+                layer.addEventListener('touchend', () => { startX = 0; }, { passive: true });
                 layer.addEventListener('mousemove', () => this.showControls());
             },
             showRipple(side) {
-                const el = document.getElementById(`ripple-${side}`); el.classList.replace('opacity-0', 'opacity-100'); el.classList.replace('scale-75', 'scale-100');
+                const el = document.getElementById(`ripple-${side}`);
+                el.classList.replace('opacity-0', 'opacity-100'); el.classList.replace('scale-75', 'scale-100');
                 setTimeout(() => { el.classList.replace('opacity-100', 'opacity-0'); el.classList.replace('scale-100', 'scale-75'); }, 400);
             },
             showControls() { document.getElementById('video-overlay').style.opacity = '1'; state.ui.controlsVisible = true; this.resetHideTimer(); },
-            hideControls() { if(state.video.isPlaying) { document.getElementById('video-overlay').style.opacity = '0'; state.ui.controlsVisible = false; } },
-            resetHideTimer() { clearTimeout(state.ui.controlsTimeout); if(state.video.isPlaying) state.ui.controlsTimeout = setTimeout(() => this.hideControls(), 3000); },
-            playSmart(url, isSync = false, options = null) {
-                const normalizedUrl = mediaHelper.normalizeUrl(url);
-                const detectedType = mediaHelper.detectType(normalizedUrl, 'native');
-                this.loadVideo(normalizedUrl, detectedType, null, isSync, options);
-            },
-            
-            loadVideo(url, type, ytId, isSync = false, options = null) {
-                if (!isSync && this.isRestricted()) {
-                    ui.showToast('Viewers cannot change the video.', 'error');
-                    return;
-                }
-
-                ytHelper.hideEmbedError();
-                document.getElementById('video-loader').classList.remove('hidden'); document.getElementById('video-status-text').textContent = "Buffering...";
-                
-                const normalizedUrl = mediaHelper.normalizeUrl(url);
-                state.video.type = type; state.video.currentYtId = ytId; state.video.currentUrl = normalizedUrl;
-                logic.trackHistory(`Video: ${type}`, normalizedUrl, 'video');
-
-                if (!isSync) { logic.emitSync('load', { video: { url: normalizedUrl, type, ytId, options } }); }
-
-                if (state.video.hls) state.video.hls.destroy();
-                if (state.video.dash) state.video.dash.reset();
-                state.video.hls = null; state.video.dash = null;
-
-                if (type === 'youtube') {
-                    this.v.pause(); this.v.classList.add('opacity-0'); this.ytContainer.classList.remove('hidden');
-                    ytHelper.execute(() => {
-                        if (!this.ytPlayer) {
-                            this.ytPlayer = new YT.Player('yt-video-placeholder', {
-                                videoId: ytId,
-                                playerVars: {
-                                    autoplay: 1, controls: 0, disablekb: 1, rel: 0,
-                                    modestbranding: 1, playsinline: 1, enablejsapi: 1,
-                                    origin: window.location.origin
-                                },
-                                events: {
-                                    'onReady': (e) => { e.target.playVideo(); document.getElementById('video-loader').classList.add('hidden'); },
-                                    'onStateChange': (e) => {
-                                        if(e.data === YT.PlayerState.PLAYING) this.onPlay(this.ytPlayer.getCurrentTime());
-                                        else if(e.data === YT.PlayerState.PAUSED) this.onPause(this.ytPlayer.getCurrentTime());
-                                        else if(e.data === YT.PlayerState.ENDED) this.onPause(0);
-                                    },
-                                    'onError': (e) => { ytHelper.handleError(e.data, ytId, null); }
-                                }
-                            });
-                        } else {
-                            this.ytPlayer.loadVideoById({ videoId: ytId, suggestedQuality: 'default' });
-                            document.getElementById('video-loader').classList.add('hidden');
-                        }
-                    });
-                } else {
-                    this.ytContainer.classList.add('hidden'); if(this.ytPlayer && this.ytPlayer.pauseVideo) this.ytPlayer.pauseVideo();
-                    this.v.classList.remove('opacity-0');
-                    if (type === 'hls' && Hls.isSupported()) {
-                        const hls = new Hls({ maxBufferLength: 30 }); hls.loadSource(normalizedUrl); hls.attachMedia(this.v); state.video.hls = hls;
-                    } else if (type === 'dash') {
-                        if (window.dashjs && window.dashjs.MediaPlayer) {
-                            const dashPlayer = window.dashjs.MediaPlayer().create();
-                            dashPlayer.updateSettings({
-                                streaming: {
-                                    retryAttempts: { MPD: 6, MediaSegment: 6, InitializationSegment: 6 },
-                                    retryIntervals: { MPD: 500, MediaSegment: 500, InitializationSegment: 500 },
-                                    lowLatencyEnabled: true
-                                }
-                            });
-                            if (options?.withCredentials) dashPlayer.setXHRWithCredentialsForType('MPD', true), dashPlayer.setXHRWithCredentialsForType('MediaSegment', true), dashPlayer.setXHRWithCredentialsForType('InitializationSegment', true);
-                            if (options?.headers && typeof options.headers === 'object') {
-                                dashPlayer.extend('RequestModifier', () => ({
-                                    modifyRequestHeader: (xhr) => {
-                                        Object.entries(options.headers).forEach(([k, v]) => {
-                                            if (String(k).toLowerCase() === 'cookie') return;
-                                            try { xhr.setRequestHeader(k, String(v)); } catch (_) {}
-                                        });
-                                        return xhr;
-                                    },
-                                    modifyRequestURL: (url) => url
-                                }), true);
-                            }
-                            if (options?.licenseUrl) {
-                                const licenseHeaders = (options.licenseHeaders && typeof options.licenseHeaders === 'object') ? options.licenseHeaders : {};
-                                dashPlayer.setProtectionData({
-                                    'com.widevine.alpha': { serverURL: options.licenseUrl, httpRequestHeaders: licenseHeaders },
-                                    'com.microsoft.playready': { serverURL: options.licenseUrl, httpRequestHeaders: licenseHeaders }
-                                });
-                            }
-                            if (options?.cookieUrl) {
-                                fetch(options.cookieUrl, { credentials: 'include' }).catch(() => null);
-                            }
-                            dashPlayer.initialize(this.v, normalizedUrl, true);
-                            state.video.dash = dashPlayer;
-                        } else {
-                            this.v.src = normalizedUrl;
-                        }
-                    } else if (['mp4', 'webm', 'native'].includes(type)) {
-                        this.v.src = normalizedUrl;
-                    } else {
-                        ui.showToast('Unsupported video format', 'error');
-                        document.getElementById('video-loader').classList.add('hidden');
-                        document.getElementById('video-status-text').textContent = "Unavailable";
-                        return;
-                    }
-                    this.v.currentTime = 0; 
-                    
-                    const playPromise = this.v.play();
-                    if(playPromise !== undefined) {
-                        playPromise.catch(e => {
-                            if (e && e.name === 'AbortError') return;
-                            state.video.isPlaying = false;
-                            document.getElementById('icon-play').classList.remove('hidden'); document.getElementById('icon-pause').classList.add('hidden');
-                            document.getElementById('video-status-text').textContent = "Paused";
-                        });
-                    }
-                }
-            }
+            hideControls() { if (state.video.isPlaying) { document.getElementById('video-overlay').style.opacity = '0'; state.ui.controlsVisible = false; } },
+            resetHideTimer() { clearTimeout(state.ui.controlsTimeout); if (state.video.isPlaying) state.ui.controlsTimeout = setTimeout(() => this.hideControls(), 3000); }
         };
+        window.engine = engine;
 
         // ==========================================
-        // MUSIC ENGINE
+        // MUSIC ENGINE — separate YT player instance
         // ==========================================
         const musicEngine = {
-            aReal: null, aCustom: null, a: null, recordEl: null, ytPlayer: null,
+            aReal: null, aCustom: null, a: null, recordEl: null,
+            ytPlayer: null, ytPlayerReady: false,
+
             init() {
-                this.aReal = document.getElementById('main-audio'); this.aCustom = document.getElementById('custom-audio');
-                this.a = this.aReal; this.recordEl = document.getElementById('music-record');
+                this.aReal = document.getElementById('main-audio');
+                this.aCustom = document.getElementById('custom-audio');
+                this.a = this.aReal;
+                this.recordEl = document.getElementById('music-record');
 
                 const bindAudioEvents = (audioEl) => {
-                    audioEl.addEventListener('play', (e) => { if(e.target === this.a && state.music.type !== 'youtube') this.onPlay(); });
-                    audioEl.addEventListener('pause', (e) => { if(e.target === this.a && state.music.type !== 'youtube') this.onPause(); });
-                    audioEl.addEventListener('timeupdate', (e) => { if(e.target === this.a && state.music.type !== 'youtube') this.onTimeUpdate(this.a.currentTime, this.a.duration); });
-                    audioEl.addEventListener('loadedmetadata', (e) => { if(e.target === this.a && state.music.type !== 'youtube' && isFinite(this.a.duration)) document.getElementById('music-time-total').textContent = ui.formatTime(this.a.duration); });
-                    audioEl.addEventListener('ended', (e) => { if(e.target === this.a && state.music.type !== 'youtube') this.nextTrack(); });
+                    audioEl.addEventListener('play', (e) => { if (e.target === this.a && state.music.type !== 'youtube') this.onPlay(); });
+                    audioEl.addEventListener('pause', (e) => { if (e.target === this.a && state.music.type !== 'youtube') this.onPause(); });
+                    audioEl.addEventListener('timeupdate', (e) => { if (e.target === this.a && state.music.type !== 'youtube') this.onTimeUpdate(this.a.currentTime, this.a.duration); });
+                    audioEl.addEventListener('loadedmetadata', (e) => {
+                        if (e.target === this.a && state.music.type !== 'youtube' && isFinite(this.a.duration)) {
+                            document.getElementById('music-time-total').textContent = ui.formatTime(this.a.duration);
+                        }
+                    });
+                    audioEl.addEventListener('ended', (e) => { if (e.target === this.a && state.music.type !== 'youtube') this.nextTrack(); });
                 };
                 bindAudioEvents(this.aReal); bindAudioEvents(this.aCustom);
 
-                document.getElementById('btn-music-play').addEventListener('click', () => { 
+                document.getElementById('btn-music-play').addEventListener('click', () => {
                     if (this.isRestricted()) return;
-                    if(state.music.type === 'youtube') { state.music.isPlaying ? this.ytPlayer.pauseVideo() : this.ytPlayer.playVideo(); } 
-                    else { this.a.paused ? this.a.play().catch(e => { if(e && e.name !== 'AbortError') ui.showToast('Error playing stream', 'error') }) : this.a.pause(); }
+                    if (state.music.type === 'youtube' && this.ytPlayer && this.ytPlayerReady) {
+                        state.music.isPlaying ? this.ytPlayer.pauseVideo() : this.ytPlayer.playVideo();
+                    } else {
+                        this.a.paused ? this.a.play().catch(e => { if (e && e.name !== 'AbortError') ui.showToast('Error playing stream', 'error'); }) : this.a.pause();
+                    }
                 });
-                
+
                 document.getElementById('btn-music-next').addEventListener('click', () => { if (!this.isRestricted()) this.nextTrack(); });
                 document.getElementById('btn-music-prev').addEventListener('click', () => { if (!this.isRestricted()) this.prevTrack(); });
+
                 document.getElementById('music-progress').addEventListener('input', (e) => {
                     if (this.isRestricted()) return;
-                    const val = e.target.value; e.target.style.setProperty('--value', `${val}%`);
-                    if(state.music.type === 'youtube' && this.ytPlayer) {
-                        const dur = this.ytPlayer.getDuration();
-                        if(isFinite(dur)) { this.ytPlayer.seekTo((val / 100) * dur); logic.emitSync('seek', { time: this.ytPlayer.getCurrentTime() }); }
+                    const val = e.target.value;
+                    e.target.style.setProperty('--value', `${val}%`);
+                    if (state.music.type === 'youtube' && this.ytPlayer && this.ytPlayerReady) {
+                        try {
+                            const dur = this.ytPlayer.getDuration();
+                            if (isFinite(dur)) { this.ytPlayer.seekTo((val / 100) * dur); logic.emitSync('seek', { time: this.ytPlayer.getCurrentTime() }); }
+                        } catch (e) {}
                     } else {
-                        if(!isFinite(this.a.duration)) return;
-                        this.a.currentTime = (val / 100) * this.a.duration; logic.emitSync('seek', { time: this.a.currentTime });
+                        if (!isFinite(this.a.duration)) return;
+                        this.a.currentTime = (val / 100) * this.a.duration;
+                        logic.emitSync('seek', { time: this.a.currentTime });
                     }
                 });
 
                 setInterval(() => {
-                    if(state.activeView === 'view-music' && state.music.type === 'youtube' && state.music.isPlaying && this.ytPlayer && this.ytPlayer.getCurrentTime) {
-                        this.onTimeUpdate(this.ytPlayer.getCurrentTime(), this.ytPlayer.getDuration());
+                    if (state.activeView === 'view-music' && state.music.type === 'youtube' && state.music.isPlaying && this.ytPlayer && this.ytPlayerReady) {
+                        try { this.onTimeUpdate(this.ytPlayer.getCurrentTime(), this.ytPlayer.getDuration()); } catch (e) {}
                     }
                 }, 250);
-
-                this.loadTrack(0, false);
             },
+
             onPlay() {
                 state.music.isPlaying = true;
-                document.getElementById('music-icon-play').classList.add('hidden'); document.getElementById('music-icon-pause').classList.remove('hidden');
+                document.getElementById('music-icon-play').classList.add('hidden');
+                document.getElementById('music-icon-pause').classList.remove('hidden');
                 this.recordEl.classList.remove('spin-paused');
-                if(this.a === this.aReal && state.music.type !== 'youtube' && !state.music.audioContext) this.initWebAudio();
-                ui.renderPlaylist(); logic.emitSync('play', { time: state.music.type === 'youtube' ? this.ytPlayer.getCurrentTime() : this.a.currentTime });
+                if (this.a === this.aReal && state.music.type !== 'youtube' && !state.music.audioContext) this.initWebAudio();
+                ui.renderPlaylist();
+                logic.emitSync('play', { time: (state.music.type === 'youtube' && this.ytPlayer && this.ytPlayerReady) ? (() => { try { return this.ytPlayer.getCurrentTime(); } catch (e) { return 0; } })() : this.a.currentTime });
             },
             onPause() {
                 state.music.isPlaying = false;
-                document.getElementById('music-icon-play').classList.remove('hidden'); document.getElementById('music-icon-pause').classList.add('hidden');
+                document.getElementById('music-icon-play').classList.remove('hidden');
+                document.getElementById('music-icon-pause').classList.add('hidden');
                 this.recordEl.classList.add('spin-paused');
-                ui.renderPlaylist(); logic.emitSync('pause', { time: state.music.type === 'youtube' ? this.ytPlayer.getCurrentTime() : this.a.currentTime });
+                ui.renderPlaylist();
+                logic.emitSync('pause', { time: (state.music.type === 'youtube' && this.ytPlayer && this.ytPlayerReady) ? (() => { try { return this.ytPlayer.getCurrentTime(); } catch (e) { return 0; } })() : this.a.currentTime });
             },
             onTimeUpdate(curr, dur) {
                 if (!dur || !isFinite(dur)) {
-                    document.getElementById('music-progress').value = 100; document.getElementById('music-progress').style.setProperty('--value', `100%`);
-                    document.getElementById('music-time-current').textContent = ui.formatTime(curr); document.getElementById('music-time-total').textContent = "Live";
+                    document.getElementById('music-progress').value = 100;
+                    document.getElementById('music-progress').style.setProperty('--value', `100%`);
+                    document.getElementById('music-time-current').textContent = ui.formatTime(curr);
+                    document.getElementById('music-time-total').textContent = "Live";
                     return;
                 }
                 const pct = (curr / dur) * 100;
-                document.getElementById('music-progress').value = pct; document.getElementById('music-progress').style.setProperty('--value', `${pct}%`);
+                document.getElementById('music-progress').value = pct;
+                document.getElementById('music-progress').style.setProperty('--value', `${pct}%`);
                 document.getElementById('music-time-current').textContent = ui.formatTime(curr);
                 document.getElementById('music-time-total').textContent = ui.formatTime(dur);
             },
+            isRestricted() {
+                if (state.teleparty.inRoom && state.teleparty.role === 'viewer') { ui.showToast('Host controls playback', 'error'); return true; }
+                return false;
+            },
+            loadTrack(idx, auto = true) {
+                if (!auto && this.isRestricted()) { ui.showToast('Viewers cannot change music.', 'error'); return; }
+                if (state.playlist.length === 0) return;
 
-            isRestricted() { if (state.teleparty.inRoom && state.teleparty.role === 'viewer') { ui.showToast('Host is controlling playback', 'error'); return true; } return false; },
-
-            loadTrack(idx, auto=true) {
-                if (!auto && this.isRestricted()) {
-                    ui.showToast('Viewers cannot change the music.', 'error');
-                    return;
+                // Stop current audio
+                if (this.a) { this.a.pause(); this.a.currentTime = 0; }
+                if (this.ytPlayer && this.ytPlayerReady) {
+                    try { this.ytPlayer.pauseVideo(); } catch (e) {}
                 }
-                if(mockPlaylist.length === 0) return;
-                if(this.a) { this.a.pause(); this.a.currentTime = 0; }
-                if(this.ytPlayer && this.ytPlayer.pauseVideo) this.ytPlayer.pauseVideo();
-                
-                state.music.currentTrackIndex = idx;
-                const track = mockPlaylist[idx];
-                state.music.type = track.type;
-                logic.trackHistory(`Music: ${track.title}`, track.url, 'music');
-                
-                document.getElementById('music-title').textContent = track.title; document.getElementById('music-artist').textContent = track.artist;
-                const thumbEl = document.getElementById('music-thumbnail'); const iconEl = document.getElementById('music-default-icon');
-                if (track.thumb) { thumbEl.src = track.thumb; thumbEl.classList.remove('hidden'); iconEl.classList.add('hidden'); } 
-                else { thumbEl.src = ''; thumbEl.classList.add('hidden'); iconEl.classList.remove('hidden'); }
-                
-                document.getElementById('music-progress').value = 0; document.getElementById('music-progress').style.setProperty('--value', `0%`);
-                document.getElementById('music-time-current').textContent = "0:00"; document.getElementById('music-time-total').textContent = track.duration === "Live" ? "Live" : "--:--";
 
-                if(track.type === 'youtube') {
+                state.music.currentTrackIndex = idx;
+                const track = state.playlist[idx];
+                state.music.type = track.type;
+                state.music.currentUrl = track.url;
+
+                document.getElementById('music-title').textContent = track.title;
+                document.getElementById('music-artist').textContent = track.artist || 'Unknown';
+                const thumbEl = document.getElementById('music-thumbnail');
+                const iconEl = document.getElementById('music-default-icon');
+                if (track.thumb) { thumbEl.src = track.thumb; thumbEl.classList.remove('hidden'); iconEl.classList.add('hidden'); }
+                else { thumbEl.src = ''; thumbEl.classList.add('hidden'); iconEl.classList.remove('hidden'); }
+
+                document.getElementById('music-progress').value = 0;
+                document.getElementById('music-progress').style.setProperty('--value', `0%`);
+                document.getElementById('music-time-current').textContent = "0:00";
+                document.getElementById('music-time-total').textContent = track.duration === "Live" ? "Live" : "--:--";
+
+                if (track.type === 'youtube' && track.ytId) {
                     ytHelper.execute(() => {
-                        if(!this.ytPlayer) {
+                        if (!this.ytPlayer) {
+                            this.ytPlayerReady = false;
                             this.ytPlayer = new YT.Player('yt-audio-placeholder', {
-                                height: '0', width: '0', videoId: track.ytId,
-                                playerVars: { autoplay: auto?1:0, controls: 0, enablejsapi: 1, origin: window.location.origin },
+                                height: '1', width: '1',
+                                videoId: track.ytId,
+                                playerVars: {
+                                    autoplay: auto ? 1 : 0,
+                                    controls: 0,
+                                    enablejsapi: 1,
+                                    origin: window.location.origin,
+                                    playsinline: 1
+                                },
                                 events: {
-                                    'onReady': (e) => { if(auto) e.target.playVideo(); },
-                                    'onStateChange': (e) => {
-                                        if(e.data === YT.PlayerState.PLAYING) this.onPlay();
-                                        else if(e.data === YT.PlayerState.PAUSED) this.onPause();
-                                        else if(e.data === YT.PlayerState.ENDED) this.nextTrack();
+                                    onReady: (e) => {
+                                        this.ytPlayerReady = true;
+                                        if (auto) e.target.playVideo();
                                     },
-                                    'onError': (e) => { ytHelper.handleError(e.data, track.ytId, () => this.nextTrack()); }
+                                    onStateChange: (e) => {
+                                        if (e.data === YT.PlayerState.PLAYING) this.onPlay();
+                                        else if (e.data === YT.PlayerState.PAUSED) this.onPause();
+                                        else if (e.data === YT.PlayerState.ENDED) this.nextTrack();
+                                    },
+                                    onError: (e) => { ytHelper.handleError(e.data, track.ytId, () => this.nextTrack()); }
                                 }
                             });
                         } else {
-                            this.ytPlayer.loadVideoById(track.ytId); if(!auto) this.ytPlayer.pauseVideo();
+                            if (this.ytPlayerReady) {
+                                if (auto) { this.ytPlayer.loadVideoById(track.ytId); }
+                                else { this.ytPlayer.cueVideoById(track.ytId); }
+                            } else {
+                                const waitInterval = setInterval(() => {
+                                    if (this.ytPlayerReady) {
+                                        clearInterval(waitInterval);
+                                        if (auto) { this.ytPlayer.loadVideoById(track.ytId); }
+                                        else { this.ytPlayer.cueVideoById(track.ytId); }
+                                    }
+                                }, 200);
+                            }
                         }
                     });
                 } else {
+                    // Native audio
                     this.a = track.isCustom ? this.aCustom : this.aReal;
-                    this.a.src = track.url; this.a.load(); ui.renderPlaylist();
-                    if(auto) {
+                    this.a.src = track.url;
+                    this.a.load();
+                    ui.renderPlaylist();
+                    if (auto) {
                         const playPromise = this.a.play();
-                        if(playPromise !== undefined) {
+                        if (playPromise !== undefined) {
                             playPromise.catch(e => {
-                                if(e && e.name === 'AbortError') return;
+                                if (e && e.name === 'AbortError') return;
                                 state.music.isPlaying = false;
-                                document.getElementById('music-icon-play').classList.remove('hidden'); document.getElementById('music-icon-pause').classList.add('hidden');
+                                document.getElementById('music-icon-play').classList.remove('hidden');
+                                document.getElementById('music-icon-pause').classList.add('hidden');
                             });
                         }
                     }
                 }
             },
-            nextTrack() { if(mockPlaylist.length) this.loadTrack((state.music.currentTrackIndex + 1) % mockPlaylist.length); },
-            prevTrack() { if(mockPlaylist.length) this.loadTrack((state.music.currentTrackIndex - 1 + mockPlaylist.length) % mockPlaylist.length); },
+            nextTrack() { if (state.playlist.length) this.loadTrack((state.music.currentTrackIndex + 1) % state.playlist.length); },
+            prevTrack() { if (state.playlist.length) this.loadTrack((state.music.currentTrackIndex - 1 + state.playlist.length) % state.playlist.length); },
             initWebAudio() {
                 try {
-                    const ctx = new (window.AudioContext || window.webkitAudioContext)(); const analyser = ctx.createAnalyser();
-                    const src = ctx.createMediaElementSource(this.aReal); src.connect(analyser); analyser.connect(ctx.destination);
-                    analyser.fftSize = 256; state.music.audioContext = ctx; state.music.analyser = analyser; state.music.dataArray = new Uint8Array(analyser.frequencyBinCount);
-                } catch(e) { console.warn("Web Audio API disabled"); }
+                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    const analyser = ctx.createAnalyser();
+                    const src = ctx.createMediaElementSource(this.aReal);
+                    src.connect(analyser); analyser.connect(ctx.destination);
+                    analyser.fftSize = 256;
+                    state.music.audioContext = ctx; state.music.analyser = analyser;
+                    state.music.dataArray = new Uint8Array(analyser.frequencyBinCount);
+                } catch (e) { console.warn("Web Audio API disabled"); }
             }
         };
+        window.musicEngine = musicEngine;
 
         const orbEngine = {
-            c: document.getElementById('bg-canvas'), ctx: null, w: 0, h: 0, mouse: {x:0, y:0}, target: {x:0, y:0}, time: 0, particles: [],
+            c: document.getElementById('bg-canvas'), ctx: null, w: 0, h: 0, mouse: { x: 0, y: 0 }, target: { x: 0, y: 0 }, time: 0, particles: [],
             init() {
                 this.ctx = this.c.getContext('2d', { alpha: false }); this.resize();
-                this.particles = Array.from({length: 50}, () => ({
+                this.particles = Array.from({ length: 50 }, () => ({
                     x: Math.random() * window.innerWidth, y: Math.random() * window.innerHeight,
-                    size: Math.random() * 1.5 + 0.5, speedY: (Math.random() * -0.5) - 0.1, speedX: (Math.random() - 0.5) * 0.3,
-                    opacity: Math.random() * 0.5 + 0.1
+                    size: Math.random() * 1.5 + 0.5, speedY: (Math.random() * -0.5) - 0.1, speedX: (Math.random() - 0.5) * 0.3, opacity: Math.random() * 0.5 + 0.1
                 }));
                 window.addEventListener('resize', () => this.resize());
                 window.addEventListener('mousemove', e => { this.target.x = e.clientX; this.target.y = e.clientY; });
-                window.addEventListener('touchmove', e => { this.target.x = e.touches[0].clientX; this.target.y = e.touches[0].clientY; }, {passive: true});
+                window.addEventListener('touchmove', e => { this.target.x = e.touches[0].clientX; this.target.y = e.touches[0].clientY; }, { passive: true });
                 requestAnimationFrame(() => this.draw());
             },
             resize() {
                 const dpr = window.devicePixelRatio || 1; this.w = window.innerWidth; this.h = window.innerHeight;
                 this.c.width = this.w * dpr; this.c.height = this.h * dpr; this.ctx.scale(dpr, dpr);
-                this.target = {x: this.w/2, y: this.h/2}; this.mouse = {x: this.w/2, y: this.h/2};
+                this.target = { x: this.w / 2, y: this.h / 2 }; this.mouse = { x: this.w / 2, y: this.h / 2 };
             },
             draw() {
                 requestAnimationFrame(() => this.draw()); this.time += 0.01;
-                this.mouse.x += (this.target.x - this.mouse.x) * 0.05; this.mouse.y += (this.target.y - this.mouse.y) * 0.05;
+                this.mouse.x += (this.target.x - this.mouse.x) * 0.05;
+                this.mouse.y += (this.target.y - this.mouse.y) * 0.05;
                 this.ctx.fillStyle = '#000000'; this.ctx.fillRect(0, 0, this.w, this.h);
-                
+
                 let aScale = 1, intensity = 0.05;
-                if(state.activeView === 'view-music' && state.music.isPlaying) {
-                    if(state.music.type === 'native' && musicEngine.a === musicEngine.aReal && state.music.analyser) {
+                if (state.activeView === 'view-music' && state.music.isPlaying) {
+                    if (state.music.type === 'native' && musicEngine.a === musicEngine.aReal && state.music.analyser) {
                         state.music.analyser.getByteFrequencyData(state.music.dataArray);
-                        let sum = 0; for(let i=0; i<10; i++) sum += state.music.dataArray[i];
-                        aScale = 1 + ((sum/10) / 255) * 0.4; intensity = 0.05 + ((sum/10) / 255) * 0.15;
+                        let sum = 0; for (let i = 0; i < 10; i++) sum += state.music.dataArray[i];
+                        aScale = 1 + ((sum / 10) / 255) * 0.4; intensity = 0.05 + ((sum / 10) / 255) * 0.15;
                     } else {
-                        let fakePulse = Math.sin(this.time * 5) * 0.5 + 0.5;
-                        fakePulse = fakePulse * 0.8 + Math.random() * 0.2;
+                        let fakePulse = Math.sin(this.time * 5) * 0.5 + 0.5; fakePulse = fakePulse * 0.8 + Math.random() * 0.2;
                         aScale = 1 + (fakePulse * 0.15); intensity = 0.05 + (fakePulse * 0.1);
                     }
                 }
-                
+
                 this.particles.forEach(p => {
                     p.y += p.speedY; p.x += p.speedX;
-                    if(p.y < 0) p.y = this.h; if(p.x < 0) p.x = this.w; if(p.x > this.w) p.x = 0;
+                    if (p.y < 0) p.y = this.h; if (p.x < 0) p.x = this.w; if (p.x > this.w) p.x = 0;
                     this.ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity * aScale})`;
-                    this.ctx.beginPath(); this.ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); this.ctx.fill();
+                    this.ctx.beginPath(); this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); this.ctx.fill();
                 });
 
-                const cx = this.w/2 + (this.mouse.x - this.w/2)*0.1, cy = this.h/2 + (this.mouse.y - this.h/2)*0.1;
-                const radius = (Math.min(this.w, this.h)*0.3 + Math.sin(this.time)*20) * aScale;
-                const grad = this.ctx.createRadialGradient(cx, cy, 0, cx, cy, radius*2);
-                grad.addColorStop(0, `rgba(255, 255, 255, ${intensity})`); grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                const cx = this.w / 2 + (this.mouse.x - this.w / 2) * 0.1;
+                const cy = this.h / 2 + (this.mouse.y - this.h / 2) * 0.1;
+                const radius = (Math.min(this.w, this.h) * 0.3 + Math.sin(this.time) * 20) * aScale;
+                const grad = this.ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 2);
+                grad.addColorStop(0, `rgba(255, 255, 255, ${intensity})`);
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
                 this.ctx.fillStyle = grad; this.ctx.fillRect(0, 0, this.w, this.h);
             }
         };
 
         // ==========================================
-        // APP LOGIC & TELEPARTY (SOCKET.IO)
+        // APP LOGIC & FIRESTORE TELEPARTY
         // ==========================================
+        let roomUnsubs = [];
+
         const logic = {
             sleepTimer: null,
             selectedGender: 'male',
@@ -1330,10 +1840,8 @@
                 this.hideAuthOverlay();
                 ui.showToast('Guest mode enabled', 'success');
             },
-            setAuthStatus(msg) {
-                const el = document.getElementById('auth-overlay-status');
-                if (el) el.textContent = msg;
-            },
+            readLocalAccounts() { return JSON.parse(localStorage.getItem('sp_local_accounts') || '{}'); },
+            writeLocalAccounts(data) { localStorage.setItem('sp_local_accounts', JSON.stringify(data)); },
             copyOverlayToPanel() {
                 const name = document.getElementById('overlay-name').value.trim();
                 const id = document.getElementById('overlay-login-id').value.trim().toLowerCase();
@@ -1345,15 +1853,11 @@
             async overlayRegister() { this.copyOverlayToPanel(); await this.registerAccount(true); },
             async overlayLogin() { this.copyOverlayToPanel(); await this.loginAccount(true); },
             async api(path, method = 'GET', body = null) {
-                const ctrl = new AbortController();
-                const timer = setTimeout(() => ctrl.abort(), 8000);
                 const res = await fetch(path, {
                     method,
                     headers: { 'Content-Type': 'application/json' },
-                    body: body ? JSON.stringify(body) : null,
-                    signal: ctrl.signal
+                    body: body ? JSON.stringify(body) : null
                 });
-                clearTimeout(timer);
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.error || 'Request failed');
                 return data;
@@ -1414,21 +1918,32 @@
             async registerAccount(fromOverlay = false) {
                 try {
                     const loginId = document.getElementById('auth-login-input').value.trim().toLowerCase();
-                    const name = document.getElementById('auth-name-input').value.trim() || loginId;
+                    const name = document.getElementById('auth-name-input').value.trim();
                     const password = document.getElementById('auth-pin-input').value.trim();
-                    this.setAuthStatus('Creating ID...');
                     const avatar = this.updateOverlayAvatar();
                     const data = await this.api('/api/auth/register', 'POST', { loginId, name, password, gender: this.selectedGender, avatar });
                     state.auth = { loggedIn: true, loginId: data.loginId, name: data.name, gender: data.gender || this.selectedGender, avatar: data.avatar || avatar, updatedAt: data.updatedAt, favorites: [], history: [] };
                     state.teleparty.userName = data.name;
                     localStorage.setItem('sp_login_id', data.loginId);
+                    if (fromOverlay) localStorage.setItem('sp_login_password', password);
                     this.applyAuthUi();
                     this.hideAuthOverlay();
-                    this.setAuthStatus('Logged in');
                     ui.showToast('Account created and logged in', 'success');
                     await this.saveUserMedia();
                 } catch (e) {
-                    this.setAuthStatus(e.message);
+                    const loginId = document.getElementById('auth-login-input').value.trim().toLowerCase();
+                    const name = document.getElementById('auth-name-input').value.trim();
+                    const password = document.getElementById('auth-pin-input').value.trim();
+                    if (e.message.includes('Failed to fetch') || e.message.includes('Network')) {
+                        const db = this.readLocalAccounts();
+                        if (db[loginId]) { ui.showToast('Offline ID already exists', 'error'); return; }
+                        db[loginId] = { loginId, name, password, gender: this.selectedGender, avatar: this.updateOverlayAvatar(), library: mockLibrary, playlist: mockPlaylist, favorites: [], history: [], updatedAt: new Date().toISOString() };
+                        this.writeLocalAccounts(db);
+                        state.auth = { loggedIn: true, loginId, name, gender: db[loginId].gender, avatar: db[loginId].avatar, updatedAt: db[loginId].updatedAt, favorites: [], history: [] };
+                        localStorage.setItem('sp_login_id', loginId); localStorage.setItem('sp_login_password', password);
+                        this.applyAuthUi(); this.hideAuthOverlay(); ui.showToast('Offline account created', 'success');
+                        return;
+                    }
                     ui.showToast(e.message, 'error');
                 }
             },
@@ -1436,20 +1951,31 @@
                 try {
                     const loginId = document.getElementById('auth-login-input').value.trim().toLowerCase();
                     const password = document.getElementById('auth-pin-input').value.trim();
-                    this.setAuthStatus('Connecting to servers...');
                     const data = await this.api('/api/auth/login', 'POST', { loginId, password });
                     state.auth = { loggedIn: true, loginId: data.loginId, name: data.name, gender: data.gender || 'male', avatar: data.avatar || '', updatedAt: data.updatedAt || null, favorites: data.favorites || [], history: data.history || [] };
                     state.teleparty.userName = data.name;
                     localStorage.setItem('sp_login_id', data.loginId);
+                    if (fromOverlay || password) localStorage.setItem('sp_login_password', password);
                     if (Array.isArray(data.library) && data.library.length) mockLibrary.splice(0, mockLibrary.length, ...data.library);
                     if (Array.isArray(data.playlist) && data.playlist.length) mockPlaylist.splice(0, mockPlaylist.length, ...data.playlist);
                     ui.renderLibrary(); ui.renderPlaylist();
                     this.applyAuthUi();
                     this.hideAuthOverlay();
-                    this.setAuthStatus('Connected');
                     ui.showToast(`Logged in as ${data.name}`, 'success');
                 } catch (e) {
-                    this.setAuthStatus(e.message);
+                    const loginId = document.getElementById('auth-login-input').value.trim().toLowerCase();
+                    const password = document.getElementById('auth-pin-input').value.trim();
+                    if (e.message.includes('Failed to fetch') || e.message.includes('Network')) {
+                        const db = this.readLocalAccounts();
+                        const user = db[loginId];
+                        if (!user || user.password !== password) { ui.showToast('Offline login failed', 'error'); return; }
+                        state.auth = { loggedIn: true, loginId: user.loginId, name: user.name, gender: user.gender || 'male', avatar: user.avatar || '', updatedAt: user.updatedAt || null, favorites: user.favorites || [], history: user.history || [] };
+                        if (Array.isArray(user.library) && user.library.length) mockLibrary.splice(0, mockLibrary.length, ...user.library);
+                        if (Array.isArray(user.playlist) && user.playlist.length) mockPlaylist.splice(0, mockPlaylist.length, ...user.playlist);
+                        localStorage.setItem('sp_login_id', loginId); localStorage.setItem('sp_login_password', password);
+                        ui.renderLibrary(); ui.renderPlaylist(); this.applyAuthUi(); this.hideAuthOverlay(); ui.showToast(`Offline login: ${user.name}`, 'success');
+                        return;
+                    }
                     ui.showToast(e.message, 'error');
                 }
             },
@@ -1457,7 +1983,9 @@
                 state.auth = { loggedIn: false, loginId: null, name: 'Guest', gender: 'male', avatar: '', updatedAt: null, favorites: [], history: [] };
                 state.teleparty.userName = 'Guest';
                 localStorage.removeItem('sp_login_id');
+                localStorage.removeItem('sp_login_password');
                 this.applyAuthUi();
+                this.showAuthOverlay();
                 ui.showToast('Logged out');
             },
             async saveUserMedia() {
@@ -1476,6 +2004,25 @@
                     state.auth.updatedAt = res.updatedAt || state.auth.updatedAt;
                     this.applyAuthUi();
                 } catch (e) {
+                    if (e.message.includes('Failed to fetch') || e.message.includes('Network')) {
+                        const db = this.readLocalAccounts();
+                        if (!db[state.auth.loginId]) return;
+                        db[state.auth.loginId] = {
+                            ...db[state.auth.loginId],
+                            name: state.auth.name,
+                            gender: state.auth.gender,
+                            avatar: state.auth.avatar,
+                            library: mockLibrary,
+                            playlist: mockPlaylist,
+                            favorites: state.auth.favorites || [],
+                            history: state.auth.history || [],
+                            updatedAt: new Date().toISOString()
+                        };
+                        this.writeLocalAccounts(db);
+                        state.auth.updatedAt = db[state.auth.loginId].updatedAt;
+                        this.applyAuthUi();
+                        return;
+                    }
                     if (e.message.includes('Sync conflict')) ui.showToast('Sync conflict detected. Please re-login to refresh latest data.', 'error');
                 }
             },
@@ -1507,134 +2054,177 @@
                 reader.readAsText(file);
             },
             toggleSleepTimer() {
-                if(this.sleepTimer) {
+                if (this.sleepTimer) {
                     clearTimeout(this.sleepTimer); this.sleepTimer = null;
-                    ui.showToast('Sleep timer canceled'); document.getElementById('btn-sleep-timer').classList.remove('text-blue-400');
+                    ui.showToast('Sleep timer canceled');
+                    document.getElementById('btn-sleep-timer').classList.remove('text-blue-400');
                 } else {
                     this.sleepTimer = setTimeout(() => {
-                        if(state.music.isPlaying) document.getElementById('btn-music-play').click();
-                        if(state.video.isPlaying) document.getElementById('btn-play-pause').click();
-                        this.sleepTimer = null; document.getElementById('btn-sleep-timer').classList.remove('text-blue-400');
+                        if (state.music.isPlaying) document.getElementById('btn-music-play').click();
+                        if (state.video.isPlaying) document.getElementById('btn-play-pause').click();
+                        this.sleepTimer = null;
+                        document.getElementById('btn-sleep-timer').classList.remove('text-blue-400');
                         ui.showToast('Sleep timer finished');
                     }, 30 * 60 * 1000);
-                    ui.showToast('Sleep timer set for 30m', 'success'); document.getElementById('btn-sleep-timer').classList.add('text-blue-400');
+                    ui.showToast('Sleep timer set for 30m', 'success');
+                    document.getElementById('btn-sleep-timer').classList.add('text-blue-400');
                 }
             },
-            createRoom() { 
-                const name = document.getElementById('tp-user-name').value.trim() || state.auth.name;
-                if(!name) { ui.showToast('Please enter your name', 'error'); return; }
-                const id = Math.random().toString(36).substring(2, 8).toUpperCase(); 
-                state.teleparty.userName = name;
-                this.connectRoom(id, 'host'); 
+            async createRoom() {
+                if (!firebaseUid) return;
+                const id = Math.random().toString(36).substring(2, 8).toUpperCase();
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', id), {
+                    host: state.user.username, createdAt: Date.now(),
+                    sync: { action: 'idle', updatedAt: Date.now() }
+                });
+                this.connectRoom(id, 'host');
             },
-            joinRoom() { 
-                const name = document.getElementById('tp-user-name').value.trim() || state.auth.name; 
-                const id = document.getElementById('tp-room-id').value.trim().toUpperCase(); 
-                if(!name) { ui.showToast('Please enter your name', 'error'); return; } 
-                if(!id) { ui.showToast('Please enter a Room ID', 'error'); return; }
-                
-                state.teleparty.userName = name; 
-                this.connectRoom(id, 'viewer'); 
+            async joinRoom() {
+                if (!firebaseUid) return;
+                const id = document.getElementById('tp-room-id').value.trim().toUpperCase();
+                if (!id) { ui.showToast('Enter a Room ID', 'error'); return; }
+                const roomSnap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', id));
+                if (!roomSnap.exists()) { ui.showToast('Room not found', 'error'); return; }
+                this.connectRoom(id, 'viewer');
             },
             connectRoom(id, role) {
-                document.getElementById('tp-setup').classList.add('hidden'); 
-                document.getElementById('tp-active').classList.remove('hidden'); 
+                document.getElementById('tp-setup').classList.add('hidden');
+                document.getElementById('tp-active').classList.remove('hidden', 'opacity-0');
                 document.getElementById('tp-active').classList.add('flex');
-                document.getElementById('tp-display-id').textContent = id; 
+                document.getElementById('tp-display-id').textContent = id;
                 document.getElementById('teleparty-badge').classList.remove('hidden');
-                
-                state.teleparty.inRoom = true; 
-                state.teleparty.roomId = id; 
-                state.teleparty.role = role;
-                
+
+                state.teleparty.inRoom = true; state.teleparty.roomId = id; state.teleparty.role = role;
+
                 const badge = document.getElementById('tp-role-badge');
-                if(role === 'host') {
-                    badge.textContent = "HOST"; badge.className = "px-2 py-1 rounded text-xs font-bold border border-green-500/50 text-green-400 bg-green-500/10";
-                    document.getElementById('host-badge').classList.add('hidden'); 
+                if (role === 'host') {
+                    badge.textContent = "HOST";
+                    badge.className = "px-2 py-1 rounded text-xs font-bold border border-green-500/50 text-green-400 bg-green-500/10";
+                    document.getElementById('host-badge').classList.add('hidden');
                     document.querySelectorAll('.host-controlled-ui').forEach(el => el.classList.remove('viewer-restricted'));
-                    
-                    // Un-restrict the Library for host
                     document.getElementById('library-wrap').classList.remove('opacity-50', 'pointer-events-none', 'grayscale');
                     document.getElementById('search-container').classList.remove('opacity-50', 'pointer-events-none');
                     document.getElementById('music-playlist-wrap').classList.remove('opacity-50', 'pointer-events-none', 'grayscale');
                 } else {
-                    badge.textContent = "VIEWER"; badge.className = "px-2 py-1 rounded text-xs font-bold border border-gray-500/50 text-gray-400 bg-gray-500/10";
-                    document.getElementById('host-badge').classList.remove('hidden'); 
+                    badge.textContent = "VIEWER";
+                    badge.className = "px-2 py-1 rounded text-xs font-bold border border-gray-500/50 text-gray-400 bg-gray-500/10";
+                    document.getElementById('host-badge').classList.remove('hidden');
                     document.querySelectorAll('.host-controlled-ui').forEach(el => el.classList.add('viewer-restricted'));
-
-                    // Lock the Library & Search for viewers so they cannot change the video
                     document.getElementById('library-wrap').classList.add('opacity-50', 'pointer-events-none', 'grayscale');
                     document.getElementById('search-container').classList.add('opacity-50', 'pointer-events-none');
                     document.getElementById('music-playlist-wrap').classList.add('opacity-50', 'pointer-events-none', 'grayscale');
                 }
-                
-                ui.showToast(`Joined room as ${role}`, 'success');
 
-                // Clear chat
+                ui.showToast(`Joined room as ${role}`, 'success');
                 document.getElementById('chat-messages').innerHTML = '<div class="text-center text-xs text-gray-500 my-2">Welcome!</div>';
 
-                if (socket) {
-                    socket.emit('join-room', { roomId: id, userName: state.teleparty.userName, role: role });
-                    
-                    // If Host, push out current state so the server caches it for future joiners
-                    if (role === 'host') {
-                        this.emitSync('load', { video: { url: state.video.currentUrl, type: state.video.type, ytId: state.video.currentYtId } });
-                        setTimeout(() => {
-                            this.emitSync(state.video.isPlaying ? 'play' : 'pause', { time: engine.getCurrentTime() });
-                        }, 500);
+                const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', id);
+                roomUnsubs.push(onSnapshot(roomRef, (snap) => {
+                    if (!snap.exists() && role === 'viewer') { this.leaveRoom(); ui.showToast('Room closed by host', 'error'); return; }
+                    if (role === 'viewer') {
+                        const sync = snap.data()?.sync;
+                        if (sync && sync.updatedAt > Date.now() - 5000) {
+                            const { action, payload } = sync;
+                            if (action === 'load' && payload && payload.video) {
+                                if (payload.video.url !== state.video.currentUrl) {
+                                    if (payload.video.type) engine.loadVideo(payload.video.url, payload.video.type, payload.video.ytId || '', true);
+                                    else engine.playSmart(payload.video.url, true);
+                                }
+                            } else if (action === 'play') {
+                                if (payload && payload.time !== undefined) engine.forceSeek(payload.time);
+                                engine.forcePlay();
+                            } else if (action === 'pause') {
+                                if (payload && payload.time !== undefined) engine.forceSeek(payload.time);
+                                engine.forcePause();
+                            } else if (action === 'seek') {
+                                if (payload && payload.time !== undefined) engine.forceSeek(payload.time);
+                            }
+                        }
                     }
+                }, err => console.error(err)));
+
+                const chatRef = collection(db, 'artifacts', appId, 'public', 'data', 'chat_' + id);
+                roomUnsubs.push(onSnapshot(chatRef, (snap) => {
+                    const msgs = [];
+                    snap.forEach(d => msgs.push(d.data()));
+                    msgs.sort((a, b) => a.timestamp - b.timestamp);
+                    document.getElementById('chat-messages').innerHTML = '';
+                    msgs.forEach(m => {
+                        const isSelf = m.sender === state.user.username;
+                        this.appendChat(m.sender, m.msg, isSelf, m.avatar);
+                        if (!isSelf && m.timestamp > Date.now() - 3000 && ['🔥', '😂', '❤️', '👀'].includes(m.msg)) this.spawnFloatingEmoji(m.msg);
+                    });
+                }, err => console.error(err)));
+
+                if (role === 'host') {
+                    this.emitSync('load', { video: { url: state.video.currentUrl, type: state.video.type, ytId: state.video.currentYtId } });
+                    setTimeout(() => this.emitSync(state.video.isPlaying ? 'play' : 'pause', { time: engine.getCurrentTime() }), 500);
                 }
             },
             leaveRoom() {
-                if (socket) { socket.disconnect(); socket.connect(); } // Reconnect cleanly drops us from rooms
-                document.getElementById('tp-setup').classList.remove('hidden'); 
-                document.getElementById('tp-active').classList.add('hidden'); 
-                document.getElementById('tp-active').classList.remove('flex');
-                document.getElementById('teleparty-badge').classList.add('hidden'); 
+                roomUnsubs.forEach(u => u()); roomUnsubs = [];
+                if (state.teleparty.role === 'host' && state.teleparty.roomId) {
+                    deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', state.teleparty.roomId));
+                }
+                document.getElementById('tp-setup').classList.remove('hidden');
+                document.getElementById('tp-active').classList.add('hidden');
+                document.getElementById('teleparty-badge').classList.add('hidden');
                 document.getElementById('host-badge').classList.add('hidden');
                 document.querySelectorAll('.host-controlled-ui').forEach(el => el.classList.remove('viewer-restricted'));
-                
-                // Unlock library
                 document.getElementById('library-wrap').classList.remove('opacity-50', 'pointer-events-none', 'grayscale');
                 document.getElementById('search-container').classList.remove('opacity-50', 'pointer-events-none');
                 document.getElementById('music-playlist-wrap').classList.remove('opacity-50', 'pointer-events-none', 'grayscale');
-
                 state.teleparty.inRoom = false; state.teleparty.roomId = null; state.teleparty.role = null;
-                document.getElementById('chat-messages').innerHTML = ''; ui.showToast('Disconnected from room');
+                document.getElementById('chat-messages').innerHTML = '';
+                ui.showToast('Disconnected from room');
             },
             copyRoomId() {
-                const el = document.createElement('textarea'); el.value = state.teleparty.roomId; document.body.appendChild(el); el.select();
-                try { document.execCommand('copy'); ui.showToast('Room ID copied to clipboard', 'success'); } catch (err) { ui.showToast('Failed to copy', 'error'); } document.body.removeChild(el);
+                const el = document.createElement('textarea');
+                el.value = state.teleparty.roomId; document.body.appendChild(el); el.select();
+                try { document.execCommand('copy'); ui.showToast('Room ID copied', 'success'); }
+                catch (err) { ui.showToast('Failed to copy', 'error'); }
+                document.body.removeChild(el);
             },
-            emitSync(action, payload) { 
-                if(!state.teleparty.inRoom || state.teleparty.role !== 'host' || !socket) return; 
-                socket.emit('sync-event', { action, payload });
+            async emitSync(action, payload) {
+                if (!state.teleparty.inRoom || state.teleparty.role !== 'host' || !firebaseUid) return;
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', state.teleparty.roomId), {
+                    sync: { action, payload, updatedAt: Date.now() }
+                }, { merge: true });
             },
-            sendChat() { 
-                const input = document.getElementById('chat-input'); const val = input.value.trim(); 
-                if(val && state.teleparty.inRoom) { 
-                    socket.emit('chat-message', val);
-                    this.appendChat(state.teleparty.userName, val, true);
-                    input.value = ''; 
-                } 
-            },
-            sendEmoji(emoji) { 
-                if(state.teleparty.inRoom) {
-                    socket.emit('chat-message', emoji);
+            async sendChat() {
+                const input = document.getElementById('chat-input');
+                const val = input.value.trim();
+                if (val && state.teleparty.inRoom && firebaseUid) {
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'chat_' + state.teleparty.roomId), {
+                        sender: state.user.username, msg: val, avatar: state.user.avatar, timestamp: Date.now()
+                    });
+                    input.value = '';
                 }
-                this.appendChat(state.teleparty.userName, emoji, true);
-                this.spawnFloatingEmoji(emoji);
             },
-            appendChat(sender, msg, isSelf = false) {
-                const c = document.getElementById('chat-messages'); const div = document.createElement('div');
-                div.className = `text-xs ${isSelf ? 'text-right' : 'text-left'}`;
-                const nameColor = sender === 'System' || sender === 'Sync' ? 'text-gray-500' : isSelf ? 'text-blue-400' : 'text-green-400';
-                div.innerHTML = `<span class="${nameColor} font-bold mr-1">${sender}:</span><span class="text-white">${msg}</span>`;
+            async sendEmoji(emoji) {
+                if (state.teleparty.inRoom && firebaseUid) {
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'chat_' + state.teleparty.roomId), {
+                        sender: state.user.username, msg: emoji, avatar: state.user.avatar, timestamp: Date.now()
+                    });
+                    this.spawnFloatingEmoji(emoji);
+                }
+            },
+            appendChat(sender, msg, isSelf = false, avatarUrl) {
+                const c = document.getElementById('chat-messages');
+                const div = document.createElement('div');
+                div.className = `flex gap-2 mb-2 ${isSelf ? 'flex-row-reverse' : ''}`;
+                div.innerHTML = `<img src="${avatarUrl || ''}" class="w-6 h-6 rounded-full bg-surfaceLight">
+                                 <div class="${isSelf ? 'text-right' : 'text-left'}">
+                                     <div class="text-[10px] text-gray-500 font-bold tracking-wider">${sender}</div>
+                                     <div class="text-xs text-white bg-white/10 px-2 py-1 rounded-lg inline-block break-all max-w-[200px]">${msg}</div>
+                                 </div>`;
                 c.appendChild(div); c.scrollTop = c.scrollHeight;
             },
             spawnFloatingEmoji(emoji) {
-                const container = document.getElementById('player-container'); const el = document.createElement('div');
-                el.textContent = emoji; el.className = 'floating-emoji animate-float-up'; el.style.left = `${40 + Math.random() * 20}%`; el.style.bottom = '20px';
+                const container = document.getElementById('player-container');
+                const el = document.createElement('div');
+                el.textContent = emoji; el.className = 'floating-emoji animate-float-up';
+                el.style.left = `${40 + Math.random() * 20}%`; el.style.bottom = '20px';
                 container.appendChild(el); setTimeout(() => el.remove(), 2000);
             },
             addCustomStream() {
@@ -1644,112 +2234,64 @@
                 const thumbInput = document.getElementById('admin-thumb').value;
                 const mpdCookieUrl = document.getElementById('admin-mpd-cookie-url').value.trim();
                 const mpdHeadersRaw = document.getElementById('admin-mpd-headers').value.trim();
-                const mpdLicenseUrl = document.getElementById('admin-mpd-license-url').value.trim();
-                const mpdLicenseHeadersRaw = document.getElementById('admin-mpd-license-headers').value.trim();
                 const mpdWithCredentials = document.getElementById('admin-mpd-credentials').checked;
                 const ytId = ytHelper.extractId(url);
-                let type = 'mp4';
-                if(ytId) { type = 'youtube'; } else { type = mediaHelper.detectType(url, 'mp4'); }
+                let type = ytId ? 'youtube' : mediaHelper.detectType(url, 'mp4');
                 const normalizedUrl = mediaHelper.normalizeUrl(url);
-                let dashOptions = null;
-                if (type === 'dash') {
-                    let parsedHeaders = {};
-                    let parsedLicenseHeaders = {};
-                    if (mpdHeadersRaw) {
-                        try { parsedHeaders = JSON.parse(mpdHeadersRaw); } catch (_) { ui.showToast('Invalid MPD headers JSON', 'error'); return; }
-                    }
-                    if (mpdLicenseHeadersRaw) {
-                        try { parsedLicenseHeaders = JSON.parse(mpdLicenseHeadersRaw); } catch (_) { ui.showToast('Invalid DRM headers JSON', 'error'); return; }
-                    }
-                    dashOptions = { cookieUrl: mpdCookieUrl || '', headers: parsedHeaders, withCredentials: !!mpdWithCredentials, licenseUrl: mpdLicenseUrl || '', licenseHeaders: parsedLicenseHeaders };
-                }
                 const finalThumb = thumbInput || (ytId ? `https://img.youtube.com/vi/${ytId}/maxresdefault.jpg` : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=600&auto=format&fit=crop');
+
+                const item = { type, title, url: normalizedUrl, ytId: ytId || null, thumb: finalThumb, duration: ytId ? 'YouTube' : (mediaType === 'video' ? 'Custom' : 'Live'), isCustom: true };
+
                 if (mediaType === 'video') {
-                    mockLibrary.unshift({ id: 'custom-' + Date.now(), type: type, title: title, url: normalizedUrl, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Custom', isCustom: true, options: dashOptions });
-                    ui.renderLibrary(); logic.saveUserMedia(); ui.closeAllPanels(); (ytId ? engine.loadVideo(normalizedUrl, type, ytId, false, dashOptions) : engine.playSmart(normalizedUrl, false, dashOptions)); ui.switchTab('view-video');
+                    libraryManager.addItem(item, 'video');
+                    ui.closeAllPanels();
+                    ytId ? engine.loadVideo(normalizedUrl, type, ytId) : engine.playSmart(normalizedUrl);
+                    ui.switchTab('view-video');
                 } else {
-                    mockPlaylist.unshift({ title: title, artist: ytId ? 'YouTube Audio' : 'Custom Stream', url: normalizedUrl, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Live', isCustom: true, type: type === 'youtube' ? 'youtube' : 'native' });
-                    ui.renderPlaylist(); logic.saveUserMedia(); ui.closeAllPanels(); musicEngine.loadTrack(0); ui.switchTab('view-music');
+                    item.artist = ytId ? 'YouTube Audio' : 'Custom Stream';
+                    item.type = type === 'youtube' ? 'youtube' : 'native';
+                    libraryManager.addItem(item, 'music');
+                    ui.closeAllPanels();
+                    ui.switchTab('view-music');
                 }
                 document.getElementById('add-stream-form').reset();
-            },
-            playLibraryItem(index) {
-                const vid = mockLibrary[index];
-                if (!vid) return;
-                engine.loadVideo(vid.url, vid.type, vid.ytId, false, vid.options || null);
-            },
-            removeVideo(id) {
-                const idx = mockLibrary.findIndex(v => v.id === id);
-                if(idx > -1) { mockLibrary.splice(idx, 1); ui.renderLibrary(); logic.saveUserMedia(); ui.showToast('Video removed'); }
-            },
-            removeTrack(index) {
-                mockPlaylist.splice(index, 1);
-                if(state.music.currentTrackIndex === index) {
-                    if(state.music.type === 'youtube' && musicEngine.ytPlayer) musicEngine.ytPlayer.pauseVideo(); else musicEngine.a.pause(); 
-                    state.music.isPlaying = false;
-                    if(mockPlaylist.length > 0) musicEngine.loadTrack(0, false);
-                    else { document.getElementById('music-title').textContent = 'No tracks'; document.getElementById('music-artist').textContent = ''; }
-                } else if (state.music.currentTrackIndex > index) { state.music.currentTrackIndex--; }
-                ui.renderPlaylist(); logic.saveUserMedia(); ui.showToast('Track removed');
             }
         };
+        window.logic = logic;
 
-        // Initialize App & Socket.io
-        document.addEventListener('DOMContentLoaded', () => {
-            
-            if (typeof io !== 'undefined') {
-                socket = io();
+        // ==========================================
+        // INITIALIZATION
+        // ==========================================
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                firebaseUid = user.uid;
 
-                socket.on('system-message', (msg) => {
-                    logic.appendChat('System', msg);
-                });
+                const btnLogin = document.getElementById('btn-auth-login');
+                const btnSignup = document.getElementById('btn-auth-signup');
+                const err = document.getElementById('auth-error');
 
-                socket.on('chat-message', (data) => {
-                    logic.appendChat(data.userName, data.msg);
-                    if (['🔥','😂','❤️','👀'].includes(data.msg)) {
-                        logic.spawnFloatingEmoji(data.msg);
-                    }
-                });
+                if (btnLogin && btnSignup) {
+                    btnLogin.disabled = false;
+                    btnLogin.classList.remove('opacity-50', 'cursor-not-allowed');
+                    btnSignup.disabled = false;
+                    btnSignup.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+                if (err && err.textContent === "Connecting to servers...") {
+                    err.textContent = "";
+                    err.classList.add('hidden');
+                }
 
-                socket.on('sync-event', (data) => {
-                    if (state.teleparty.role === 'viewer') {
-                        const { action, payload } = data;
-                        
-                        if (action === 'load' && payload.video) {
-                            if (payload.video.url !== state.video.currentUrl) {
-                                if (payload.video.type) engine.loadVideo(payload.video.url, payload.video.type, payload.video.ytId, true, payload.video.options || null);
-                                else engine.playSmart(payload.video.url, true, payload.video.options || null);
-                            }
-                        } else if (action === 'play') {
-                            if(payload.time !== undefined) engine.forceSeek(payload.time);
-                            engine.forcePlay();
-                        } else if (action === 'pause') {
-                            if(payload.time !== undefined) engine.forceSeek(payload.time);
-                            engine.forcePause();
-                        } else if (action === 'seek') {
-                            if(payload.time !== undefined) engine.forceSeek(payload.time);
-                        }
-                    }
-                });
+                authManager.checkExistingSession();
+            } else {
+                document.getElementById('auth-overlay').classList.remove('hidden', 'opacity-0');
             }
+        });
 
+        document.addEventListener('DOMContentLoaded', async () => {
             document.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click', () => ui.switchTab(btn.dataset.target)));
-            ui.renderLibrary(); ui.renderPlaylist(); engine.init(); musicEngine.init(); orbEngine.init(); searchEngine.init();
+            engine.init(); musicEngine.init(); orbEngine.init(); searchEngine.init();
             ui.switchTab('view-video');
-            logic.applyAuthUi();
-            logic.updateOverlayAvatar();
-            logic.setAuthStatus('Ready');
-            ['overlay-name', 'overlay-login-id'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.addEventListener('input', () => logic.updateOverlayAvatar());
-            });
-
-            const rememberedLoginId = localStorage.getItem('sp_login_id');
-            if (rememberedLoginId) {
-                document.getElementById('auth-login-input').value = rememberedLoginId;
-                document.getElementById('overlay-login-id').value = rememberedLoginId;
-            }
-            logic.hideAuthOverlay();
+            await authManager.init();
         });
     </script>
 </body>
