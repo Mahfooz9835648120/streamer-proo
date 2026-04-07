@@ -66,6 +66,8 @@
     
     <!-- HLS.js -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <!-- DASH.js -->
+    <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
     
     <!-- YouTube IFrame API -->
     <script src="https://www.youtube.com/iframe_api"></script>
@@ -134,6 +136,10 @@
             <div class="flex items-center gap-4 text-gray-400">
                 <button class="hover:text-white transition-colors" onclick="ui.togglePanel('admin-panel')"><i data-lucide="settings" class="w-5 h-5"></i></button>
                 <button class="hover:text-white transition-colors" onclick="engine.togglePiP()" title="Picture in Picture"><i data-lucide="cast" class="w-5 h-5"></i></button>
+                <button class="hover:text-white transition-colors relative" onclick="ui.togglePanel('account-panel')" title="Account">
+                    <i data-lucide="user-circle-2" class="w-5 h-5"></i>
+                    <span id="auth-badge" class="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full hidden"></span>
+                </button>
                 <button class="hover:text-white transition-colors relative" onclick="ui.togglePanel('watch-together-panel')" title="Watch Together">
                     <i data-lucide="users" class="w-5 h-5"></i>
                     <span id="teleparty-badge" class="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full hidden"></span>
@@ -353,6 +359,32 @@
             </div>
         </aside>
 
+        <aside id="account-panel" class="fixed top-0 right-0 h-full w-full max-w-sm glass-panel z-50 transform translate-x-full transition-transform duration-400 flex flex-col">
+            <div class="p-6 border-b border-border flex items-center justify-between">
+                <h2 class="text-sm font-bold tracking-widest">ACCOUNT</h2>
+                <button onclick="ui.closeAllPanels()" class="p-2 hover:bg-white/10 rounded-full"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="p-6 flex-1 overflow-y-auto space-y-6">
+                <div class="glass rounded-xl p-4 text-xs text-gray-300">
+                    <p>Logged in as: <span id="auth-name" class="font-bold text-white">Guest</span></p>
+                    <p class="mt-1">Login ID: <span id="auth-login-id" class="font-mono text-blue-300">not-set</span></p>
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] font-bold tracking-widest text-gray-500">DISPLAY NAME</label>
+                    <input type="text" id="auth-name-input" placeholder="Your Name" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30">
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] font-bold tracking-widest text-gray-500">LOGIN ID (3-20: a-z, 0-9, _, -)</label>
+                    <input type="text" id="auth-login-input" placeholder="your_id" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30 lowercase">
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="logic.registerAccount()" class="flex-1 bg-white text-black font-semibold py-3 rounded-xl hover:bg-gray-200 transition-colors">Create ID</button>
+                    <button onclick="logic.loginAccount()" class="flex-1 border border-white/20 text-white font-semibold py-3 rounded-xl hover:bg-white/5 transition-colors">Login</button>
+                </div>
+                <button onclick="logic.logoutAccount()" class="w-full bg-red-500/10 text-red-400 border border-red-500/20 font-semibold py-3 rounded-xl hover:bg-red-500/20 transition-colors text-sm">Logout</button>
+            </div>
+        </aside>
+
         <!-- Watch Together Panel -->
         <aside id="watch-together-panel" class="fixed top-0 right-0 h-full w-full max-w-sm glass-panel z-50 transform translate-x-full transition-transform duration-400 flex flex-col">
             <div class="p-6 border-b border-border flex items-center justify-between shrink-0">
@@ -439,13 +471,34 @@
         };
         ytHelper.init();
 
+        const mediaHelper = {
+            extractGoogleDriveId(url = '') {
+                const match = String(url).match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+                return match ? match[1] : null;
+            },
+            normalizeUrl(url = '') {
+                const driveId = this.extractGoogleDriveId(url);
+                if (driveId) return `https://drive.google.com/uc?export=download&id=${driveId}`;
+                return url;
+            },
+            detectType(url = '', fallback = 'mp4') {
+                const clean = this.normalizeUrl(url).split('?')[0].toLowerCase();
+                if (clean.endsWith('.m3u8')) return 'hls';
+                if (clean.endsWith('.mpd')) return 'dash';
+                if (clean.endsWith('.webm')) return 'webm';
+                if (clean.endsWith('.mp4')) return 'mp4';
+                return fallback;
+            }
+        };
+
         // ==========================================
         // STATE & DATA
         // ==========================================
         const state = {
             activeView: 'view-video',
-            video: { isPlaying: false, isMuted: false, quality: 'auto', hls: null, type: 'native', currentYtId: null, currentUrl: null },
+            video: { isPlaying: false, isMuted: false, quality: 'auto', hls: null, dash: null, type: 'native', currentYtId: null, currentUrl: null },
             music: { isPlaying: false, currentTrackIndex: 0, audioContext: null, analyser: null, dataArray: null, type: 'native' },
+            auth: { loggedIn: false, loginId: null, name: 'Guest' },
             teleparty: { inRoom: false, roomId: null, role: null, userName: 'Guest' },
             ui: { controlsVisible: true, controlsTimeout: null }
         };
@@ -528,6 +581,12 @@
         // ==========================================
         const searchEngine = {
             input: document.getElementById('search-input'), resultsContainer: document.getElementById('search-results'), timeout: null,
+            providers: [
+                { type: 'piped', base: 'https://pipedapi.kavin.rocks' },
+                { type: 'piped', base: 'https://api.piped.projectsegfau.lt' },
+                { type: 'invidious', base: 'https://inv.nadeko.net' },
+                { type: 'invidious', base: 'https://invidious.fdn.fr' }
+            ],
             init() {
                 this.input.addEventListener('input', (e) => {
                     clearTimeout(this.timeout); const q = e.target.value.trim();
@@ -536,6 +595,35 @@
                 });
                 document.addEventListener('click', (e) => { if (!document.getElementById('search-container').contains(e.target)) this.resultsContainer.classList.add('hidden'); });
             },
+            esc(str = '') {
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            },
+            normalizeResult(item) {
+                const ytId = ytHelper.extractId(item.url || '') || item.id || item.videoId || item.videoIdOrNull;
+                if (!ytId) return null;
+                const title = item.title || item.name || 'YouTube video';
+                const uploader = item.uploaderName || item.author || item.uploader || 'YouTube';
+                const thumb = item.thumbnail || item.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
+                const duration = Number.isFinite(item.duration) ? item.duration : (Number.isFinite(item.lengthSeconds) ? item.lengthSeconds : -1);
+                return { ytId, title, uploader, thumb, duration };
+            },
+            async fetchPiped(base, query) {
+                const res = await fetch(`${base}/search?q=${encodeURIComponent(query)}&filter=videos`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return (data?.items || []).map(item => this.normalizeResult(item)).filter(Boolean);
+            },
+            async fetchInvidious(base, query) {
+                const res = await fetch(`${base}/api/v1/search?q=${encodeURIComponent(query)}&type=video`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return (Array.isArray(data) ? data : []).map(item => this.normalizeResult(item)).filter(Boolean);
+            },
             async performSearch(query) {
                 const directYtId = ytHelper.extractId(query);
                 if(directYtId) { this.playResult(directYtId, 'Pasted YouTube Stream', `https://img.youtube.com/vi/${directYtId}/mqdefault.jpg`); return; }
@@ -543,27 +631,38 @@
                 this.resultsContainer.innerHTML = `<div class="p-4 text-center text-xs text-gray-400"><i data-lucide="loader-2" class="w-5 h-5 animate-spin mx-auto mb-2"></i> Searching YouTube...</div>`;
                 this.resultsContainer.classList.remove('hidden'); lucide.createIcons();
 
-                const pipedInstances = ['https://pipedapi.kavin.rocks', 'https://api.piped.projectsegfau.lt'];
-                let data = null;
-                for (const instance of pipedInstances) {
+                let results = [];
+                try {
+                    const res = await fetch(`/api/search-youtube?q=${encodeURIComponent(query)}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        results = Array.isArray(data?.items) ? data.items : [];
+                    }
+                } catch (_e) {}
+
+                for (const provider of this.providers) {
+                    if (results.length > 0) break;
                     try {
-                        const res = await fetch(`${instance}/search?q=${encodeURIComponent(query)}&filter=videos`);
-                        if (res.ok) { data = await res.json(); break; }
+                        results = provider.type === 'piped'
+                            ? await this.fetchPiped(provider.base, query)
+                            : await this.fetchInvidious(provider.base, query);
+                        if (results.length > 0) break;
                     } catch(e) { continue; }
                 }
 
-                if (!data || !data.items || data.items.length === 0) {
+                if (results.length === 0) {
                     this.resultsContainer.innerHTML = `<div class="p-4 text-center text-xs text-gray-400">No results found</div>`; return;
                 }
 
-                const html = data.items.slice(0, 6).map(item => {
-                    const ytId = item.url.split('?v=')[1]; const thumb = item.thumbnail || `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
+                const html = results.slice(0, 6).map(item => {
+                    const encodedTitle = encodeURIComponent(item.title || 'YouTube video');
+                    const encodedThumb = encodeURIComponent(item.thumb || `https://img.youtube.com/vi/${item.ytId}/mqdefault.jpg`);
                     return `
-                        <div class="flex items-center gap-3 p-3 hover:bg-white/10 cursor-pointer transition border-b border-white/5" onclick="searchEngine.playResult('${ytId}', '${item.title.replace(/'/g, "\\'")}', '${thumb}')">
-                            <div class="w-16 h-9 rounded bg-surfaceLight flex-shrink-0 overflow-hidden"><img src="${thumb}" class="w-full h-full object-cover"></div>
+                        <div class="flex items-center gap-3 p-3 hover:bg-white/10 cursor-pointer transition border-b border-white/5" onclick="searchEngine.playResultFromEncoded('${item.ytId}', '${encodedTitle}', '${encodedThumb}')">
+                            <div class="w-16 h-9 rounded bg-surfaceLight flex-shrink-0 overflow-hidden"><img src="${item.thumb}" class="w-full h-full object-cover"></div>
                             <div class="flex-1 min-w-0">
-                                <p class="text-sm font-semibold text-white truncate">${item.title}</p>
-                                <p class="text-[10px] text-gray-400 truncate">${item.uploaderName} • ${item.duration > 0 ? ui.formatTime(item.duration) : 'Live'}</p>
+                                <p class="text-sm font-semibold text-white truncate">${this.esc(item.title)}</p>
+                                <p class="text-[10px] text-gray-400 truncate">${this.esc(item.uploader)} • ${item.duration > 0 ? ui.formatTime(item.duration) : 'Live'}</p>
                             </div>
                             <i data-lucide="play-circle" class="w-4 h-4 text-gray-400 flex-shrink-0"></i>
                         </div>`;
@@ -571,16 +670,19 @@
                 
                 this.resultsContainer.innerHTML = html; lucide.createIcons();
             },
+            playResultFromEncoded(ytId, encodedTitle, encodedThumb) {
+                this.playResult(ytId, decodeURIComponent(encodedTitle), decodeURIComponent(encodedThumb));
+            },
             playResult(ytId, title, thumb) {
                 this.resultsContainer.classList.add('hidden'); this.input.value = '';
                 const url = `https://www.youtube.com/watch?v=${ytId}`;
                 
                 if (state.activeView === 'view-video') {
                     mockLibrary.unshift({ id: 'yt-' + Date.now(), type: 'youtube', title: title, url: url, ytId: ytId, thumb: thumb, duration: 'YouTube', isCustom: true });
-                    ui.renderLibrary(); engine.loadVideo(url, 'youtube', ytId);
+                    ui.renderLibrary(); logic.saveUserMedia(); engine.loadVideo(url, 'youtube', ytId);
                 } else {
                     mockPlaylist.unshift({ title: title, artist: 'YouTube Audio', url: url, ytId: ytId, thumb: thumb, duration: 'YouTube', isCustom: true, type: 'youtube' });
-                    ui.renderPlaylist(); musicEngine.loadTrack(0);
+                    ui.renderPlaylist(); logic.saveUserMedia(); musicEngine.loadTrack(0);
                 }
             }
         };
@@ -823,6 +925,11 @@
             showControls() { document.getElementById('video-overlay').style.opacity = '1'; state.ui.controlsVisible = true; this.resetHideTimer(); },
             hideControls() { if(state.video.isPlaying) { document.getElementById('video-overlay').style.opacity = '0'; state.ui.controlsVisible = false; } },
             resetHideTimer() { clearTimeout(state.ui.controlsTimeout); if(state.video.isPlaying) state.ui.controlsTimeout = setTimeout(() => this.hideControls(), 3000); },
+            playSmart(url, isSync = false) {
+                const normalizedUrl = mediaHelper.normalizeUrl(url);
+                const detectedType = mediaHelper.detectType(normalizedUrl, 'native');
+                this.loadVideo(normalizedUrl, detectedType, null, isSync);
+            },
             
             loadVideo(url, type, ytId, isSync = false) {
                 if (!isSync && this.isRestricted()) {
@@ -833,11 +940,14 @@
                 ytHelper.hideEmbedError();
                 document.getElementById('video-loader').classList.remove('hidden'); document.getElementById('video-status-text').textContent = "Buffering...";
                 
-                state.video.type = type; state.video.currentYtId = ytId; state.video.currentUrl = url;
+                const normalizedUrl = mediaHelper.normalizeUrl(url);
+                state.video.type = type; state.video.currentYtId = ytId; state.video.currentUrl = normalizedUrl;
 
-                if (!isSync) { logic.emitSync('load', { video: { url, type, ytId } }); }
+                if (!isSync) { logic.emitSync('load', { video: { url: normalizedUrl, type, ytId } }); }
 
                 if (state.video.hls) state.video.hls.destroy();
+                if (state.video.dash) state.video.dash.reset();
+                state.video.hls = null; state.video.dash = null;
 
                 if (type === 'youtube') {
                     this.v.pause(); this.v.classList.add('opacity-0'); this.ytContainer.classList.remove('hidden');
@@ -869,8 +979,23 @@
                     this.ytContainer.classList.add('hidden'); if(this.ytPlayer && this.ytPlayer.pauseVideo) this.ytPlayer.pauseVideo();
                     this.v.classList.remove('opacity-0');
                     if (type === 'hls' && Hls.isSupported()) {
-                        const hls = new Hls({ maxBufferLength: 30 }); hls.loadSource(url); hls.attachMedia(this.v); state.video.hls = hls;
-                    } else { this.v.src = url; }
+                        const hls = new Hls({ maxBufferLength: 30 }); hls.loadSource(normalizedUrl); hls.attachMedia(this.v); state.video.hls = hls;
+                    } else if (type === 'dash') {
+                        if (window.dashjs && window.dashjs.MediaPlayer) {
+                            const dashPlayer = window.dashjs.MediaPlayer().create();
+                            dashPlayer.initialize(this.v, normalizedUrl, true);
+                            state.video.dash = dashPlayer;
+                        } else {
+                            this.v.src = normalizedUrl;
+                        }
+                    } else if (['mp4', 'webm', 'native'].includes(type)) {
+                        this.v.src = normalizedUrl;
+                    } else {
+                        ui.showToast('Unsupported video format', 'error');
+                        document.getElementById('video-loader').classList.add('hidden');
+                        document.getElementById('video-status-text').textContent = "Unavailable";
+                        return;
+                    }
                     this.v.currentTime = 0; 
                     
                     const playPromise = this.v.play();
@@ -1083,6 +1208,73 @@
         // ==========================================
         const logic = {
             sleepTimer: null,
+            async api(path, method = 'GET', body = null) {
+                const res = await fetch(path, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: body ? JSON.stringify(body) : null
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || 'Request failed');
+                return data;
+            },
+            applyAuthUi() {
+                document.getElementById('auth-name').textContent = state.auth.name || 'Guest';
+                document.getElementById('auth-login-id').textContent = state.auth.loginId || 'not-set';
+                document.getElementById('auth-name-input').value = state.auth.name === 'Guest' ? '' : state.auth.name;
+                document.getElementById('auth-login-input').value = state.auth.loginId || '';
+                document.getElementById('auth-badge').classList.toggle('hidden', !state.auth.loggedIn);
+                if (state.auth.loggedIn) {
+                    document.getElementById('tp-user-name').value = state.auth.name;
+                    document.getElementById('tp-user-name').setAttribute('readonly', 'readonly');
+                } else {
+                    document.getElementById('tp-user-name').removeAttribute('readonly');
+                }
+            },
+            async registerAccount() {
+                try {
+                    const loginId = document.getElementById('auth-login-input').value.trim().toLowerCase();
+                    const name = document.getElementById('auth-name-input').value.trim();
+                    const data = await this.api('/api/auth/register', 'POST', { loginId, name });
+                    state.auth = { loggedIn: true, loginId: data.loginId, name: data.name };
+                    state.teleparty.userName = data.name;
+                    localStorage.setItem('sp_login_id', data.loginId);
+                    this.applyAuthUi();
+                    ui.showToast('Account created and logged in', 'success');
+                    await this.saveUserMedia();
+                } catch (e) { ui.showToast(e.message, 'error'); }
+            },
+            async loginAccount() {
+                try {
+                    const loginId = document.getElementById('auth-login-input').value.trim().toLowerCase();
+                    const data = await this.api('/api/auth/login', 'POST', { loginId });
+                    state.auth = { loggedIn: true, loginId: data.loginId, name: data.name };
+                    state.teleparty.userName = data.name;
+                    localStorage.setItem('sp_login_id', data.loginId);
+                    if (Array.isArray(data.library) && data.library.length) mockLibrary.splice(0, mockLibrary.length, ...data.library);
+                    if (Array.isArray(data.playlist) && data.playlist.length) mockPlaylist.splice(0, mockPlaylist.length, ...data.playlist);
+                    ui.renderLibrary(); ui.renderPlaylist();
+                    this.applyAuthUi();
+                    ui.showToast(`Logged in as ${data.name}`, 'success');
+                } catch (e) { ui.showToast(e.message, 'error'); }
+            },
+            logoutAccount() {
+                state.auth = { loggedIn: false, loginId: null, name: 'Guest' };
+                state.teleparty.userName = 'Guest';
+                localStorage.removeItem('sp_login_id');
+                this.applyAuthUi();
+                ui.showToast('Logged out');
+            },
+            async saveUserMedia() {
+                if (!state.auth.loggedIn || !state.auth.loginId) return;
+                try {
+                    await this.api(`/api/user-media/${encodeURIComponent(state.auth.loginId)}`, 'PUT', {
+                        name: state.auth.name,
+                        library: mockLibrary,
+                        playlist: mockPlaylist
+                    });
+                } catch (_) {}
+            },
             toggleSleepTimer() {
                 if(this.sleepTimer) {
                     clearTimeout(this.sleepTimer); this.sleepTimer = null;
@@ -1098,14 +1290,14 @@
                 }
             },
             createRoom() { 
-                const name = document.getElementById('tp-user-name').value.trim();
+                const name = document.getElementById('tp-user-name').value.trim() || state.auth.name;
                 if(!name) { ui.showToast('Please enter your name', 'error'); return; }
                 const id = Math.random().toString(36).substring(2, 8).toUpperCase(); 
                 state.teleparty.userName = name;
                 this.connectRoom(id, 'host'); 
             },
             joinRoom() { 
-                const name = document.getElementById('tp-user-name').value.trim(); 
+                const name = document.getElementById('tp-user-name').value.trim() || state.auth.name; 
                 const id = document.getElementById('tp-room-id').value.trim().toUpperCase(); 
                 if(!name) { ui.showToast('Please enter your name', 'error'); return; } 
                 if(!id) { ui.showToast('Please enter a Room ID', 'error'); return; }
@@ -1221,20 +1413,21 @@
                 const thumbInput = document.getElementById('admin-thumb').value;
                 const ytId = ytHelper.extractId(url);
                 let type = 'mp4';
-                if(ytId) { type = 'youtube'; } else if (url.includes('.m3u8')) { type = 'hls'; }
+                if(ytId) { type = 'youtube'; } else { type = mediaHelper.detectType(url, 'mp4'); }
+                const normalizedUrl = mediaHelper.normalizeUrl(url);
                 const finalThumb = thumbInput || (ytId ? `https://img.youtube.com/vi/${ytId}/maxresdefault.jpg` : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=600&auto=format&fit=crop');
                 if (mediaType === 'video') {
-                    mockLibrary.unshift({ id: 'custom-' + Date.now(), type: type, title: title, url: url, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Custom', isCustom: true });
-                    ui.renderLibrary(); ui.closeAllPanels(); engine.loadVideo(url, type, ytId); ui.switchTab('view-video');
+                    mockLibrary.unshift({ id: 'custom-' + Date.now(), type: type, title: title, url: normalizedUrl, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Custom', isCustom: true });
+                    ui.renderLibrary(); logic.saveUserMedia(); ui.closeAllPanels(); (ytId ? engine.loadVideo(normalizedUrl, type, ytId) : engine.playSmart(normalizedUrl)); ui.switchTab('view-video');
                 } else {
-                    mockPlaylist.unshift({ title: title, artist: ytId ? 'YouTube Audio' : 'Custom Stream', url: url, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Live', isCustom: true, type: type === 'youtube' ? 'youtube' : 'native' });
-                    ui.renderPlaylist(); ui.closeAllPanels(); musicEngine.loadTrack(0); ui.switchTab('view-music');
+                    mockPlaylist.unshift({ title: title, artist: ytId ? 'YouTube Audio' : 'Custom Stream', url: normalizedUrl, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Live', isCustom: true, type: type === 'youtube' ? 'youtube' : 'native' });
+                    ui.renderPlaylist(); logic.saveUserMedia(); ui.closeAllPanels(); musicEngine.loadTrack(0); ui.switchTab('view-music');
                 }
                 document.getElementById('add-stream-form').reset();
             },
             removeVideo(id) {
                 const idx = mockLibrary.findIndex(v => v.id === id);
-                if(idx > -1) { mockLibrary.splice(idx, 1); ui.renderLibrary(); ui.showToast('Video removed'); }
+                if(idx > -1) { mockLibrary.splice(idx, 1); ui.renderLibrary(); logic.saveUserMedia(); ui.showToast('Video removed'); }
             },
             removeTrack(index) {
                 mockPlaylist.splice(index, 1);
@@ -1244,7 +1437,7 @@
                     if(mockPlaylist.length > 0) musicEngine.loadTrack(0, false);
                     else { document.getElementById('music-title').textContent = 'No tracks'; document.getElementById('music-artist').textContent = ''; }
                 } else if (state.music.currentTrackIndex > index) { state.music.currentTrackIndex--; }
-                ui.renderPlaylist(); ui.showToast('Track removed');
+                ui.renderPlaylist(); logic.saveUserMedia(); ui.showToast('Track removed');
             }
         };
 
@@ -1271,7 +1464,8 @@
                         
                         if (action === 'load' && payload.video) {
                             if (payload.video.url !== state.video.currentUrl) {
-                                engine.loadVideo(payload.video.url, payload.video.type, payload.video.ytId, true);
+                                if (payload.video.type) engine.loadVideo(payload.video.url, payload.video.type, payload.video.ytId, true);
+                                else engine.playSmart(payload.video.url, true);
                             }
                         } else if (action === 'play') {
                             if(payload.time !== undefined) engine.forceSeek(payload.time);
@@ -1289,6 +1483,13 @@
             document.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click', () => ui.switchTab(btn.dataset.target)));
             ui.renderLibrary(); ui.renderPlaylist(); engine.init(); musicEngine.init(); orbEngine.init(); searchEngine.init();
             ui.switchTab('view-video');
+            logic.applyAuthUi();
+
+            const rememberedLoginId = localStorage.getItem('sp_login_id');
+            if (rememberedLoginId) {
+                document.getElementById('auth-login-input').value = rememberedLoginId;
+                logic.loginAccount();
+            }
         });
     </script>
 </body>
