@@ -69,6 +69,9 @@
     
     <!-- YouTube IFrame API -->
     <script src="https://www.youtube.com/iframe_api"></script>
+    
+    <!-- Socket.io -->
+    <script src="/socket.io/socket.io.js"></script>
 
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #000; color: #fff; overflow: hidden; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
@@ -390,40 +393,10 @@
         </aside>
     </div>
 
-    <!-- Convert script to module to support Firebase Sync -->
-    <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
-        import { getFirestore, doc, setDoc, getDoc, updateDoc, arrayUnion, onSnapshot } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
-
+    <script>
         lucide.createIcons();
 
-        let db = null, auth = null, currentUser = null, appId = 'default-app-id';
-        let unsubRoom = null;
-
-        // ==========================================
-        // FIREBASE SETUP FOR ROOM SYNC
-        // ==========================================
-        const initFirebase = async () => {
-            try {
-                if (typeof __firebase_config === 'undefined') return;
-                const firebaseConfig = JSON.parse(__firebase_config);
-                appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                
-                const app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-                
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                
-                onAuthStateChanged(auth, user => { currentUser = user; });
-            } catch (e) { console.error('Firebase init error', e); }
-        };
-        initFirebase();
+        let socket = null;
 
         // ==========================================
         // YOUTUBE API QUEUE & ERROR 153 FIX
@@ -470,7 +443,7 @@
             activeView: 'view-video',
             video: { isPlaying: false, isMuted: false, quality: 'auto', hls: null, type: 'native', currentYtId: null, currentUrl: null },
             music: { isPlaying: false, currentTrackIndex: 0, audioContext: null, analyser: null, dataArray: null, type: 'native' },
-            teleparty: { inRoom: false, roomId: null, role: null, userName: 'Guest', lastMessageCount: 0 },
+            teleparty: { inRoom: false, roomId: null, role: null, userName: 'Guest' },
             ui: { controlsVisible: true, controlsTimeout: null }
         };
 
@@ -690,11 +663,11 @@
             togglePlay() { 
                 if(this.isRestricted()) return; 
                 if(state.video.type === 'youtube') { state.video.isPlaying ? this.ytPlayer.pauseVideo() : this.ytPlayer.playVideo(); }
-                else { state.video.isPlaying ? this.v.pause() : this.v.play(); }
+                else { state.video.isPlaying ? this.v.pause() : this.v.play().catch(e => { if (e && e.name !== 'AbortError') console.warn('Play prevented:', e.name) }); }
             },
             forcePlay() {
                 if(state.video.type === 'youtube' && this.ytPlayer) this.ytPlayer.playVideo();
-                else this.v.play();
+                else this.v.play().catch(e => { if (e && e.name !== 'AbortError') console.warn('Force play prevented:', e.name) });
             },
             forcePause() {
                 if(state.video.type === 'youtube' && this.ytPlayer) this.ytPlayer.pauseVideo();
@@ -716,6 +689,7 @@
                 logic.emitSync('seek', { time: newTime });
             },
             forceSeek(time) {
+                if(!isFinite(time)) return;
                 if(state.video.type === 'youtube' && this.ytPlayer) this.ytPlayer.seekTo(time);
                 else this.v.currentTime = time;
             },
@@ -845,6 +819,7 @@
                     const playPromise = this.v.play();
                     if(playPromise !== undefined) {
                         playPromise.catch(e => {
+                            if (e && e.name === 'AbortError') return;
                             state.video.isPlaying = false;
                             document.getElementById('icon-play').classList.remove('hidden'); document.getElementById('icon-pause').classList.add('hidden');
                             document.getElementById('video-status-text').textContent = "Paused";
@@ -875,7 +850,7 @@
                 document.getElementById('btn-music-play').addEventListener('click', () => { 
                     if (this.isRestricted()) return;
                     if(state.music.type === 'youtube') { state.music.isPlaying ? this.ytPlayer.pauseVideo() : this.ytPlayer.playVideo(); } 
-                    else { this.a.paused ? this.a.play().catch(e => ui.showToast('Error playing stream', 'error')) : this.a.pause(); }
+                    else { this.a.paused ? this.a.play().catch(e => { if(e && e.name !== 'AbortError') ui.showToast('Error playing stream', 'error') }) : this.a.pause(); }
                 });
                 
                 document.getElementById('btn-music-next').addEventListener('click', () => { if (!this.isRestricted()) this.nextTrack(); });
@@ -971,6 +946,7 @@
                         const playPromise = this.a.play();
                         if(playPromise !== undefined) {
                             playPromise.catch(e => {
+                                if(e && e.name === 'AbortError') return;
                                 state.music.isPlaying = false;
                                 document.getElementById('music-icon-play').classList.remove('hidden'); document.getElementById('music-icon-pause').classList.add('hidden');
                             });
@@ -1042,7 +1018,7 @@
         };
 
         // ==========================================
-        // APP LOGIC & TELEPARTY (FIREBASE)
+        // APP LOGIC & TELEPARTY (SOCKET.IO)
         // ==========================================
         const logic = {
             sleepTimer: null,
@@ -1060,94 +1036,70 @@
                     ui.showToast('Sleep timer set for 30m', 'success'); document.getElementById('btn-sleep-timer').classList.add('text-blue-400');
                 }
             },
-            async createRoom() { 
-                if (!db || !currentUser) return ui.showToast('Server connection pending...', 'error');
+            createRoom() { 
                 const name = document.getElementById('tp-user-name').value.trim();
                 if(!name) { ui.showToast('Please enter your name', 'error'); return; }
                 const id = Math.random().toString(36).substring(2, 8).toUpperCase(); 
                 state.teleparty.userName = name;
-                
-                try {
-                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', id);
-                    await setDoc(roomRef, {
-                        host: currentUser.uid,
-                        video: { url: state.video.currentUrl, type: state.video.type, ytId: state.video.currentYtId },
-                        state: state.video.isPlaying ? 'playing' : 'paused',
-                        time: engine.getCurrentTime(),
-                        updatedAt: Date.now(),
-                        messages: [{ sender: 'System', text: `${name} created the room.` }]
-                    });
-                    this.connectRoom(id, 'host'); 
-                } catch(e) { ui.showToast('Error creating room', 'error'); }
+                this.connectRoom(id, 'host'); 
             },
-            async joinRoom() { 
-                if (!db || !currentUser) return ui.showToast('Server connection pending...', 'error');
-                const name = document.getElementById('tp-user-name').value.trim(); const id = document.getElementById('tp-room-id').value.trim().toUpperCase(); 
-                if(!name) { ui.showToast('Please enter your name', 'error'); return; } if(!id) { ui.showToast('Please enter a Room ID', 'error'); return; }
+            joinRoom() { 
+                const name = document.getElementById('tp-user-name').value.trim(); 
+                const id = document.getElementById('tp-room-id').value.trim().toUpperCase(); 
+                if(!name) { ui.showToast('Please enter your name', 'error'); return; } 
+                if(!id) { ui.showToast('Please enter a Room ID', 'error'); return; }
                 
-                try {
-                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', id);
-                    const snap = await getDoc(roomRef);
-                    if (!snap.exists()) {
-                        ui.showToast('Invalid Room ID. The room may have been closed.', 'error');
-                        return;
-                    }
-                    state.teleparty.userName = name; 
-                    await updateDoc(roomRef, { messages: arrayUnion({ sender: 'System', text: `${name} joined the room.` }) });
-                    this.connectRoom(id, 'viewer'); 
-                } catch(e) { ui.showToast('Error joining room', 'error'); }
+                state.teleparty.userName = name; 
+                this.connectRoom(id, 'viewer'); 
             },
             connectRoom(id, role) {
-                document.getElementById('tp-setup').classList.add('hidden'); document.getElementById('tp-active').classList.remove('hidden'); document.getElementById('tp-active').classList.add('flex');
-                document.getElementById('tp-display-id').textContent = id; document.getElementById('teleparty-badge').classList.remove('hidden');
-                state.teleparty.inRoom = true; state.teleparty.roomId = id; state.teleparty.role = role; state.teleparty.lastMessageCount = 0;
+                document.getElementById('tp-setup').classList.add('hidden'); 
+                document.getElementById('tp-active').classList.remove('hidden'); 
+                document.getElementById('tp-active').classList.add('flex');
+                document.getElementById('tp-display-id').textContent = id; 
+                document.getElementById('teleparty-badge').classList.remove('hidden');
+                
+                state.teleparty.inRoom = true; 
+                state.teleparty.roomId = id; 
+                state.teleparty.role = role;
                 
                 const badge = document.getElementById('tp-role-badge');
                 if(role === 'host') {
                     badge.textContent = "HOST"; badge.className = "px-2 py-1 rounded text-xs font-bold border border-green-500/50 text-green-400 bg-green-500/10";
-                    document.getElementById('host-badge').classList.add('hidden'); document.querySelectorAll('.host-controlled-ui').forEach(el => el.classList.remove('viewer-restricted'));
+                    document.getElementById('host-badge').classList.add('hidden'); 
+                    document.querySelectorAll('.host-controlled-ui').forEach(el => el.classList.remove('viewer-restricted'));
                 } else {
                     badge.textContent = "VIEWER"; badge.className = "px-2 py-1 rounded text-xs font-bold border border-gray-500/50 text-gray-400 bg-gray-500/10";
-                    document.getElementById('host-badge').classList.remove('hidden'); document.querySelectorAll('.host-controlled-ui').forEach(el => el.classList.add('viewer-restricted'));
+                    document.getElementById('host-badge').classList.remove('hidden'); 
+                    document.querySelectorAll('.host-controlled-ui').forEach(el => el.classList.add('viewer-restricted'));
                 }
+                
                 ui.showToast(`Joined room as ${role}`, 'success');
 
-                const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', id);
-                unsubRoom = onSnapshot(roomRef, (docSnap) => {
-                    if (!docSnap.exists()) { this.leaveRoom(); ui.showToast('Room was closed', 'error'); return; }
-                    const data = docSnap.data();
+                // Clear chat
+                document.getElementById('chat-messages').innerHTML = '<div class="text-center text-xs text-gray-500 my-2">Welcome!</div>';
 
-                    // Chat sync
-                    const c = document.getElementById('chat-messages'); c.innerHTML = '';
-                    data.messages.forEach((m, idx) => {
-                        this.appendChat(m.sender, m.text, m.sender === state.teleparty.userName);
-                        if (idx >= state.teleparty.lastMessageCount && ['🔥','😂','❤️','👀'].includes(m.text) && m.sender !== state.teleparty.userName) {
-                            this.spawnFloatingEmoji(m.text);
-                        }
-                    });
-                    state.teleparty.lastMessageCount = data.messages.length;
-
-                    // Viewer Video Sync
-                    if (role === 'viewer') {
-                        if (data.video && data.video.url !== state.video.currentUrl) {
-                            engine.loadVideo(data.video.url, data.video.type, data.video.ytId, true);
-                        }
-                        let expectedTime = data.time || 0;
-                        if (data.state === 'playing') expectedTime += (Date.now() - (data.updatedAt || Date.now())) / 1000;
-                        
-                        const currentLocalTime = engine.getCurrentTime();
-                        if (Math.abs(currentLocalTime - expectedTime) > 2.5 && isFinite(expectedTime)) { engine.forceSeek(expectedTime); }
-                        
-                        if (data.state === 'playing' && !state.video.isPlaying) { engine.forcePlay(); } 
-                        else if (data.state === 'paused' && state.video.isPlaying) { engine.forcePause(); }
+                if (socket) {
+                    socket.emit('join-room', { roomId: id, userName: state.teleparty.userName, role: role });
+                    
+                    // If Host, push out current state so the server caches it for future joiners
+                    if (role === 'host') {
+                        this.emitSync('load', { video: { url: state.video.currentUrl, type: state.video.type, ytId: state.video.currentYtId } });
+                        setTimeout(() => {
+                            this.emitSync(state.video.isPlaying ? 'play' : 'pause', { time: engine.getCurrentTime() });
+                        }, 500);
                     }
-                }, (error) => { console.error("Room sync error", error); });
+                }
             },
             leaveRoom() {
-                if (unsubRoom) { unsubRoom(); unsubRoom = null; }
-                document.getElementById('tp-setup').classList.remove('hidden'); document.getElementById('tp-active').classList.add('hidden'); document.getElementById('tp-active').classList.remove('flex');
-                document.getElementById('teleparty-badge').classList.add('hidden'); document.getElementById('host-badge').classList.add('hidden');
+                if (socket) { socket.disconnect(); socket.connect(); } // Reconnect cleanly drops us from rooms
+                document.getElementById('tp-setup').classList.remove('hidden'); 
+                document.getElementById('tp-active').classList.add('hidden'); 
+                document.getElementById('tp-active').classList.remove('flex');
+                document.getElementById('teleparty-badge').classList.add('hidden'); 
+                document.getElementById('host-badge').classList.add('hidden');
                 document.querySelectorAll('.host-controlled-ui').forEach(el => el.classList.remove('viewer-restricted'));
+                
                 state.teleparty.inRoom = false; state.teleparty.roomId = null; state.teleparty.role = null;
                 document.getElementById('chat-messages').innerHTML = ''; ui.showToast('Disconnected from room');
             },
@@ -1156,29 +1108,23 @@
                 try { document.execCommand('copy'); ui.showToast('Room ID copied to clipboard', 'success'); } catch (err) { ui.showToast('Failed to copy', 'error'); } document.body.removeChild(el);
             },
             emitSync(action, payload) { 
-                if(!state.teleparty.inRoom || state.teleparty.role !== 'host' || !db) return; 
-                const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', state.teleparty.roomId);
-                let updates = { updatedAt: Date.now() };
-                if (action === 'play') { updates.state = 'playing'; updates.time = payload.time; }
-                else if (action === 'pause') { updates.state = 'paused'; updates.time = payload.time; }
-                else if (action === 'seek') { updates.time = payload.time; }
-                else if (action === 'load') { updates.video = payload.video; updates.state = 'playing'; updates.time = 0; }
-                updateDoc(roomRef, updates).catch(e => console.error("Sync error:", e));
+                if(!state.teleparty.inRoom || state.teleparty.role !== 'host' || !socket) return; 
+                socket.emit('sync-event', { action, payload });
             },
-            async sendChat() { 
+            sendChat() { 
                 const input = document.getElementById('chat-input'); const val = input.value.trim(); 
                 if(val && state.teleparty.inRoom) { 
-                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', state.teleparty.roomId);
-                    await updateDoc(roomRef, { messages: arrayUnion({ sender: state.teleparty.userName, text: val }) });
+                    socket.emit('chat-message', val);
+                    this.appendChat(state.teleparty.userName, val, true);
                     input.value = ''; 
                 } 
             },
-            async sendEmoji(emoji) { 
+            sendEmoji(emoji) { 
                 if(state.teleparty.inRoom) {
-                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', state.teleparty.roomId);
-                    await updateDoc(roomRef, { messages: arrayUnion({ sender: state.teleparty.userName, text: emoji }) });
-                    this.spawnFloatingEmoji(emoji);
-                } else { this.spawnFloatingEmoji(emoji); }
+                    socket.emit('chat-message', emoji);
+                }
+                this.appendChat(state.teleparty.userName, emoji, true);
+                this.spawnFloatingEmoji(emoji);
             },
             appendChat(sender, msg, isSelf = false) {
                 const c = document.getElementById('chat-messages'); const div = document.createElement('div');
@@ -1226,14 +1172,44 @@
             }
         };
 
-        // Expose functions globally for HTML inline handlers to work correctly in module scope
-        window.ui = ui;
-        window.logic = logic;
-        window.engine = engine;
-        window.musicEngine = musicEngine;
-        window.searchEngine = searchEngine;
-
+        // Initialize App & Socket.io
         document.addEventListener('DOMContentLoaded', () => {
+            
+            if (typeof io !== 'undefined') {
+                socket = io();
+
+                socket.on('system-message', (msg) => {
+                    logic.appendChat('System', msg);
+                });
+
+                socket.on('chat-message', (data) => {
+                    logic.appendChat(data.userName, data.msg);
+                    if (['🔥','😂','❤️','👀'].includes(data.msg)) {
+                        logic.spawnFloatingEmoji(data.msg);
+                    }
+                });
+
+                socket.on('sync-event', (data) => {
+                    if (state.teleparty.role === 'viewer') {
+                        const { action, payload } = data;
+                        
+                        if (action === 'load' && payload.video) {
+                            if (payload.video.url !== state.video.currentUrl) {
+                                engine.loadVideo(payload.video.url, payload.video.type, payload.video.ytId, true);
+                            }
+                        } else if (action === 'play') {
+                            if(payload.time !== undefined) engine.forceSeek(payload.time);
+                            engine.forcePlay();
+                        } else if (action === 'pause') {
+                            if(payload.time !== undefined) engine.forceSeek(payload.time);
+                            engine.forcePause();
+                        } else if (action === 'seek') {
+                            if(payload.time !== undefined) engine.forceSeek(payload.time);
+                        }
+                    }
+                });
+            }
+
             document.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click', () => ui.switchTab(btn.dataset.target)));
             ui.renderLibrary(); ui.renderPlaylist(); engine.init(); musicEngine.init(); orbEngine.init(); searchEngine.init();
             ui.switchTab('view-video');

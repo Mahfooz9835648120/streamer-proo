@@ -1,13 +1,16 @@
 {
   "name": "streamer-pro",
   "version": "1.0.0",
-  "description": "Streamer Pro Media App",
+  "description": "A Watch Together streaming application",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.7.2"
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
   }
 }
