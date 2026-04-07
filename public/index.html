@@ -1087,6 +1087,7 @@
                 state.music.currentTrackIndex = idx;
                 const track = mockPlaylist[idx];
                 state.music.type = track.type;
+                logic.trackHistory(`Music: ${track.title}`, track.url, 'music');
                 
                 document.getElementById('music-title').textContent = track.title; document.getElementById('music-artist').textContent = track.artist;
                 const thumbEl = document.getElementById('music-thumbnail'); const iconEl = document.getElementById('music-default-icon');
