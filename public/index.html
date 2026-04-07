@@ -528,6 +528,12 @@
         // ==========================================
         const searchEngine = {
             input: document.getElementById('search-input'), resultsContainer: document.getElementById('search-results'), timeout: null,
+            providers: [
+                { type: 'piped', base: 'https://pipedapi.kavin.rocks' },
+                { type: 'piped', base: 'https://api.piped.projectsegfau.lt' },
+                { type: 'invidious', base: 'https://inv.nadeko.net' },
+                { type: 'invidious', base: 'https://invidious.fdn.fr' }
+            ],
             init() {
                 this.input.addEventListener('input', (e) => {
                     clearTimeout(this.timeout); const q = e.target.value.trim();
@@ -536,6 +542,35 @@
                 });
                 document.addEventListener('click', (e) => { if (!document.getElementById('search-container').contains(e.target)) this.resultsContainer.classList.add('hidden'); });
             },
+            esc(str = '') {
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            },
+            normalizeResult(item) {
+                const ytId = ytHelper.extractId(item.url || '') || item.id || item.videoId || item.videoIdOrNull;
+                if (!ytId) return null;
+                const title = item.title || item.name || 'YouTube video';
+                const uploader = item.uploaderName || item.author || item.uploader || 'YouTube';
+                const thumb = item.thumbnail || item.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
+                const duration = Number.isFinite(item.duration) ? item.duration : (Number.isFinite(item.lengthSeconds) ? item.lengthSeconds : -1);
+                return { ytId, title, uploader, thumb, duration };
+            },
+            async fetchPiped(base, query) {
+                const res = await fetch(`${base}/search?q=${encodeURIComponent(query)}&filter=videos`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return (data?.items || []).map(item => this.normalizeResult(item)).filter(Boolean);
+            },
+            async fetchInvidious(base, query) {
+                const res = await fetch(`${base}/api/v1/search?q=${encodeURIComponent(query)}&type=video`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return (Array.isArray(data) ? data : []).map(item => this.normalizeResult(item)).filter(Boolean);
+            },
             async performSearch(query) {
                 const directYtId = ytHelper.extractId(query);
                 if(directYtId) { this.playResult(directYtId, 'Pasted YouTube Stream', `https://img.youtube.com/vi/${directYtId}/mqdefault.jpg`); return; }
@@ -543,33 +578,38 @@
                 this.resultsContainer.innerHTML = `<div class="p-4 text-center text-xs text-gray-400"><i data-lucide="loader-2" class="w-5 h-5 animate-spin mx-auto mb-2"></i> Searching YouTube...</div>`;
                 this.resultsContainer.classList.remove('hidden'); lucide.createIcons();
 
-                const pipedInstances = ['https://pipedapi.kavin.rocks', 'https://api.piped.projectsegfau.lt'];
-                let data = null;
-                for (const instance of pipedInstances) {
+                let results = [];
+                for (const provider of this.providers) {
                     try {
-                        const res = await fetch(`${instance}/search?q=${encodeURIComponent(query)}&filter=videos`);
-                        if (res.ok) { data = await res.json(); break; }
+                        results = provider.type === 'piped'
+                            ? await this.fetchPiped(provider.base, query)
+                            : await this.fetchInvidious(provider.base, query);
+                        if (results.length > 0) break;
                     } catch(e) { continue; }
                 }
 
-                if (!data || !data.items || data.items.length === 0) {
+                if (results.length === 0) {
                     this.resultsContainer.innerHTML = `<div class="p-4 text-center text-xs text-gray-400">No results found</div>`; return;
                 }
 
-                const html = data.items.slice(0, 6).map(item => {
-                    const ytId = item.url.split('?v=')[1]; const thumb = item.thumbnail || `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
+                const html = results.slice(0, 6).map(item => {
+                    const encodedTitle = encodeURIComponent(item.title || 'YouTube video');
+                    const encodedThumb = encodeURIComponent(item.thumb || `https://img.youtube.com/vi/${item.ytId}/mqdefault.jpg`);
                     return `
-                        <div class="flex items-center gap-3 p-3 hover:bg-white/10 cursor-pointer transition border-b border-white/5" onclick="searchEngine.playResult('${ytId}', '${item.title.replace(/'/g, "\\'")}', '${thumb}')">
-                            <div class="w-16 h-9 rounded bg-surfaceLight flex-shrink-0 overflow-hidden"><img src="${thumb}" class="w-full h-full object-cover"></div>
+                        <div class="flex items-center gap-3 p-3 hover:bg-white/10 cursor-pointer transition border-b border-white/5" onclick="searchEngine.playResultFromEncoded('${item.ytId}', '${encodedTitle}', '${encodedThumb}')">
+                            <div class="w-16 h-9 rounded bg-surfaceLight flex-shrink-0 overflow-hidden"><img src="${item.thumb}" class="w-full h-full object-cover"></div>
                             <div class="flex-1 min-w-0">
-                                <p class="text-sm font-semibold text-white truncate">${item.title}</p>
-                                <p class="text-[10px] text-gray-400 truncate">${item.uploaderName} • ${item.duration > 0 ? ui.formatTime(item.duration) : 'Live'}</p>
+                                <p class="text-sm font-semibold text-white truncate">${this.esc(item.title)}</p>
+                                <p class="text-[10px] text-gray-400 truncate">${this.esc(item.uploader)} • ${item.duration > 0 ? ui.formatTime(item.duration) : 'Live'}</p>
                             </div>
                             <i data-lucide="play-circle" class="w-4 h-4 text-gray-400 flex-shrink-0"></i>
                         </div>`;
                 }).join('');
                 
                 this.resultsContainer.innerHTML = html; lucide.createIcons();
+            },
+            playResultFromEncoded(ytId, encodedTitle, encodedThumb) {
+                this.playResult(ytId, decodeURIComponent(encodedTitle), decodeURIComponent(encodedThumb));
             },
             playResult(ytId, title, thumb) {
                 this.resultsContainer.classList.add('hidden'); this.input.value = '';
