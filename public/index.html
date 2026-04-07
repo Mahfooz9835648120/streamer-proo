@@ -907,7 +907,7 @@
         // SEARCH ENGINE
         // ==========================================
         const searchEngine = {
-            input: document.getElementById('search-input'),
+            input: document.getElementById('seach-input'),
             resultsContainer: document.getElementById('search-results'),
             timeout: null,
             providers: [
@@ -936,6 +936,35 @@
                 const thumb = item.thumbnail || item.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
                 const duration = Number.isFinite(item.duration) ? item.duration : (Number.isFinite(item.lengthSeconds) ? item.lengthSeconds : -1);
                 return { ytId, title, uploader, thumb, duration };
+            },
+            esc(str = '') {
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            },
+            normalizeResult(item) {
+                const ytId = ytHelper.extractId(item.url || '') || item.id || item.videoId || item.videoIdOrNull;
+                if (!ytId) return null;
+                const title = item.title || item.name || 'YouTube video';
+                const uploader = item.uploaderName || item.author || item.uploader || 'YouTube';
+                const thumb = item.thumbnail || item.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
+                const duration = Number.isFinite(item.duration) ? item.duration : (Number.isFinite(item.lengthSeconds) ? item.lengthSeconds : -1);
+                return { ytId, title, uploader, thumb, duration };
+            },
+            async fetchPiped(base, query) {
+                const res = await fetch(`${base}/search?q=${encodeURIComponent(query)}&filter=videos`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return (data?.items || []).map(item => this.normalizeResult(item)).filter(Boolean);
+            },
+            async fetchInvidious(base, query) {
+                const res = await fetch(`${base}/api/v1/search?q=${encodeURIComponent(query)}&type=video`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return (Array.isArray(data) ? data : []).map(item => this.normalizeResult(item)).filter(Boolean);
             },
             esc(str = '') {
                 return String(str)
@@ -1010,6 +1039,9 @@
                         </div>`;
                 }).join('');
                 lucide.createIcons();
+            },
+            playResultFromEncoded(ytId, encodedTitle, encodedThumb) {
+                this.playResult(ytId, decodeURIComponent(encodedTitle), decodeURIComponent(encodedThumb));
             },
             playResultFromEncoded(ytId, encodedTitle, encodedThumb) {
                 this.playResult(ytId, decodeURIComponent(encodedTitle), decodeURIComponent(encodedThumb));
