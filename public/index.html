@@ -66,6 +66,8 @@
     
     <!-- HLS.js -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <!-- DASH.js -->
+    <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
     
     <!-- YouTube IFrame API -->
     <script src="https://www.youtube.com/iframe_api"></script>
@@ -439,12 +441,32 @@
         };
         ytHelper.init();
 
+        const mediaHelper = {
+            extractGoogleDriveId(url = '') {
+                const match = String(url).match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+                return match ? match[1] : null;
+            },
+            normalizeUrl(url = '') {
+                const driveId = this.extractGoogleDriveId(url);
+                if (driveId) return `https://drive.google.com/uc?export=download&id=${driveId}`;
+                return url;
+            },
+            detectType(url = '', fallback = 'mp4') {
+                const clean = this.normalizeUrl(url).split('?')[0].toLowerCase();
+                if (clean.endsWith('.m3u8')) return 'hls';
+                if (clean.endsWith('.mpd')) return 'dash';
+                if (clean.endsWith('.webm')) return 'webm';
+                if (clean.endsWith('.mp4')) return 'mp4';
+                return fallback;
+            }
+        };
+
         // ==========================================
         // STATE & DATA
         // ==========================================
         const state = {
             activeView: 'view-video',
-            video: { isPlaying: false, isMuted: false, quality: 'auto', hls: null, type: 'native', currentYtId: null, currentUrl: null },
+            video: { isPlaying: false, isMuted: false, quality: 'auto', hls: null, dash: null, type: 'native', currentYtId: null, currentUrl: null },
             music: { isPlaying: false, currentTrackIndex: 0, audioContext: null, analyser: null, dataArray: null, type: 'native' },
             teleparty: { inRoom: false, roomId: null, role: null, userName: 'Guest' },
             ui: { controlsVisible: true, controlsTimeout: null }
@@ -863,6 +885,11 @@
             showControls() { document.getElementById('video-overlay').style.opacity = '1'; state.ui.controlsVisible = true; this.resetHideTimer(); },
             hideControls() { if(state.video.isPlaying) { document.getElementById('video-overlay').style.opacity = '0'; state.ui.controlsVisible = false; } },
             resetHideTimer() { clearTimeout(state.ui.controlsTimeout); if(state.video.isPlaying) state.ui.controlsTimeout = setTimeout(() => this.hideControls(), 3000); },
+            playSmart(url, isSync = false) {
+                const normalizedUrl = mediaHelper.normalizeUrl(url);
+                const detectedType = mediaHelper.detectType(normalizedUrl, 'native');
+                this.loadVideo(normalizedUrl, detectedType, null, isSync);
+            },
             
             loadVideo(url, type, ytId, isSync = false) {
                 if (!isSync && this.isRestricted()) {
@@ -873,11 +900,14 @@
                 ytHelper.hideEmbedError();
                 document.getElementById('video-loader').classList.remove('hidden'); document.getElementById('video-status-text').textContent = "Buffering...";
                 
-                state.video.type = type; state.video.currentYtId = ytId; state.video.currentUrl = url;
+                const normalizedUrl = mediaHelper.normalizeUrl(url);
+                state.video.type = type; state.video.currentYtId = ytId; state.video.currentUrl = normalizedUrl;
 
-                if (!isSync) { logic.emitSync('load', { video: { url, type, ytId } }); }
+                if (!isSync) { logic.emitSync('load', { video: { url: normalizedUrl, type, ytId } }); }
 
                 if (state.video.hls) state.video.hls.destroy();
+                if (state.video.dash) state.video.dash.reset();
+                state.video.hls = null; state.video.dash = null;
 
                 if (type === 'youtube') {
                     this.v.pause(); this.v.classList.add('opacity-0'); this.ytContainer.classList.remove('hidden');
@@ -909,8 +939,23 @@
                     this.ytContainer.classList.add('hidden'); if(this.ytPlayer && this.ytPlayer.pauseVideo) this.ytPlayer.pauseVideo();
                     this.v.classList.remove('opacity-0');
                     if (type === 'hls' && Hls.isSupported()) {
-                        const hls = new Hls({ maxBufferLength: 30 }); hls.loadSource(url); hls.attachMedia(this.v); state.video.hls = hls;
-                    } else { this.v.src = url; }
+                        const hls = new Hls({ maxBufferLength: 30 }); hls.loadSource(normalizedUrl); hls.attachMedia(this.v); state.video.hls = hls;
+                    } else if (type === 'dash') {
+                        if (window.dashjs && window.dashjs.MediaPlayer) {
+                            const dashPlayer = window.dashjs.MediaPlayer().create();
+                            dashPlayer.initialize(this.v, normalizedUrl, true);
+                            state.video.dash = dashPlayer;
+                        } else {
+                            this.v.src = normalizedUrl;
+                        }
+                    } else if (['mp4', 'webm', 'native'].includes(type)) {
+                        this.v.src = normalizedUrl;
+                    } else {
+                        ui.showToast('Unsupported video format', 'error');
+                        document.getElementById('video-loader').classList.add('hidden');
+                        document.getElementById('video-status-text').textContent = "Unavailable";
+                        return;
+                    }
                     this.v.currentTime = 0; 
                     
                     const playPromise = this.v.play();
@@ -1261,13 +1306,14 @@
                 const thumbInput = document.getElementById('admin-thumb').value;
                 const ytId = ytHelper.extractId(url);
                 let type = 'mp4';
-                if(ytId) { type = 'youtube'; } else if (url.includes('.m3u8')) { type = 'hls'; }
+                if(ytId) { type = 'youtube'; } else { type = mediaHelper.detectType(url, 'mp4'); }
+                const normalizedUrl = mediaHelper.normalizeUrl(url);
                 const finalThumb = thumbInput || (ytId ? `https://img.youtube.com/vi/${ytId}/maxresdefault.jpg` : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=600&auto=format&fit=crop');
                 if (mediaType === 'video') {
-                    mockLibrary.unshift({ id: 'custom-' + Date.now(), type: type, title: title, url: url, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Custom', isCustom: true });
-                    ui.renderLibrary(); ui.closeAllPanels(); engine.loadVideo(url, type, ytId); ui.switchTab('view-video');
+                    mockLibrary.unshift({ id: 'custom-' + Date.now(), type: type, title: title, url: normalizedUrl, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Custom', isCustom: true });
+                    ui.renderLibrary(); ui.closeAllPanels(); (ytId ? engine.loadVideo(normalizedUrl, type, ytId) : engine.playSmart(normalizedUrl)); ui.switchTab('view-video');
                 } else {
-                    mockPlaylist.unshift({ title: title, artist: ytId ? 'YouTube Audio' : 'Custom Stream', url: url, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Live', isCustom: true, type: type === 'youtube' ? 'youtube' : 'native' });
+                    mockPlaylist.unshift({ title: title, artist: ytId ? 'YouTube Audio' : 'Custom Stream', url: normalizedUrl, ytId: ytId, thumb: finalThumb, duration: ytId ? 'YouTube' : 'Live', isCustom: true, type: type === 'youtube' ? 'youtube' : 'native' });
                     ui.renderPlaylist(); ui.closeAllPanels(); musicEngine.loadTrack(0); ui.switchTab('view-music');
                 }
                 document.getElementById('add-stream-form').reset();
@@ -1311,7 +1357,8 @@
                         
                         if (action === 'load' && payload.video) {
                             if (payload.video.url !== state.video.currentUrl) {
-                                engine.loadVideo(payload.video.url, payload.video.type, payload.video.ytId, true);
+                                if (payload.video.type) engine.loadVideo(payload.video.url, payload.video.type, payload.video.ytId, true);
+                                else engine.playSmart(payload.video.url, true);
                             }
                         } else if (action === 'play') {
                             if(payload.time !== undefined) engine.forceSeek(payload.time);
